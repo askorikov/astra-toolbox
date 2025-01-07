@@ -137,7 +137,9 @@ bool checkDLTensor(DLTensor *tensor, std::array<int, 3> dims, bool allowPitch, s
 	if (tensor->strides) {
 		int64_t acc = 1;
 		for (int i = tensor->ndim-1; i >= 0; --i) {
-			if (tensor->strides[i] != acc) {
+			// We don't check this for dimensions where the shape is 1.
+			// There the stride is not relevant, and torch can set it to 1.
+			if (tensor->shape[i] >= 2 && tensor->strides[i] != acc) {
 				if (allowPitch)
 					error = "Data must be contiguous in all dimensions except first";
 				else
