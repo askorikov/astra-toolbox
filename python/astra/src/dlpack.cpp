@@ -146,9 +146,15 @@ bool checkDLTensor(DLTensor *tensor, std::array<int, 3> dims, bool allowPitch, s
 					error = "Data must be contiguous";
 				return false;
 			}
-			if (i == tensor->ndim-1 && allowPitch)
-				acc *= tensor->strides[i-1]; // allow different stride in x
-			else
+			if (i == tensor->ndim-1 && allowPitch) {
+				// allow different stride in x. This stride
+				// will be the first valid stride for a lower
+				// axis
+				int j = i-1;
+				while (j >= 0 && tensor->shape[j] < 2)
+					--j;
+				acc *= tensor->strides[j];
+			} else
 				acc *= tensor->shape[i];
 		}
 	}
