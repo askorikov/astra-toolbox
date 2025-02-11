@@ -1,0 +1,10 @@
+[project]
+name = 'astra-toolbox'
+version = '2.2.0'
+description = 'High-performance GPU primitives and algorithms for 2D and 3D tomography'
+license = {text = 'GPL-3.0-only'}
+readme = 'README.md'
+
+[project.urls]
+'Home page' = 'https://astra-toolbox.com'
+'Source'  = 'https://github.com/astra-toolbox/astra-toolbox'
