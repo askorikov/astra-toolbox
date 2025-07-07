@@ -10,6 +10,7 @@ set(ASTRA_SOURCES
     ConeProjectionGeometry3D.cpp
     ConeVecProjectionGeometry3D.cpp
     Config.cpp
+    Data3D.cpp
     DataProjector.cpp
     DataProjectorPolicies.cpp
     FanFlatBeamLineKernelProjector2D.cpp
@@ -21,14 +22,8 @@ set(ASTRA_SOURCES
     Filters.cpp
     Float32Data.cpp
     Float32Data2D.cpp
-    Float32Data3D.cpp
-    Float32Data3DMemory.cpp
     Float32ProjectionData2D.cpp
-    Float32ProjectionData3D.cpp
-    Float32ProjectionData3DMemory.cpp
     Float32VolumeData2D.cpp
-    Float32VolumeData3D.cpp
-    Float32VolumeData3DMemory.cpp
     ForwardProjectionAlgorithm.cpp
     Fourier.cpp
     GeometryUtil2D.cpp
@@ -47,7 +42,9 @@ set(ASTRA_SOURCES
     PlatformDepSystemCode.cpp
     PluginAlgorithmFactory.cpp
     ProjectionGeometry2D.cpp
+    ProjectionGeometry2DFactory.cpp
     ProjectionGeometry3D.cpp
+    ProjectionGeometry3DFactory.cpp
     Projector2D.cpp
     Projector3D.cpp
     ReconstructionAlgorithm2D.cpp
@@ -61,6 +58,7 @@ set(ASTRA_SOURCES
     Utilities.cpp
     VolumeGeometry2D.cpp
     VolumeGeometry3D.cpp
+    XMLConfig.cpp
     XMLDocument.cpp
     XMLNode.cpp)
 
@@ -119,9 +117,6 @@ if(ASTRA_USE_CUDA)
       CudaSirtAlgorithm3D.cpp
       CudaBackProjectionAlgorithm3D.cpp
       CudaForwardProjectionAlgorithm3D.cpp
-      Float32Data3DGPU.cpp
-      Float32ProjectionData3DGPU.cpp
-      Float32VolumeData3DGPU.cpp
       "${CMAKE_SOURCE_DIR}/cuda/2d/algo.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/par_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/par_bp.cu"
