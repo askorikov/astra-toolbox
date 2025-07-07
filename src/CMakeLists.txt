@@ -80,7 +80,7 @@ add_library(astra SHARED ${ASTRA_SOURCES})
 set_target_properties(
   astra
   PROPERTIES POSITION_INDEPENDENT_CODE ON
-             COMPILE_FEATURES cxx_std_11
+             COMPILE_FEATURES cxx_std_17
              INCLUDE_DIRECTORIES "${ASTRA_INCLUDES}"
              VERSION 0.0.0
              SOVERSION 0

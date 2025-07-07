@@ -21,7 +21,7 @@ set_target_properties(
   astratest
   PROPERTIES POSITION_INDEPENDENT_CODE ON
              COMPILE_DEFINITIONS "ASTRA_CUDA"
-             COMPILE_FEATURES cxx_std_11
+             COMPILE_FEATURES cxx_std_17
              INCLUDE_DIRECTORIES "${ASTRA_INCLUDES}"
              LINK_LIBRARIES "Boost::unit_test_framework;astra")
 
