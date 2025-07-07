@@ -1,10 +1,3 @@
-# Find libboost components ---------------------------------------------------
-
-set(Boost_USE_STATIC_LIBS OFF)
-set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost 1.70 CONFIG REQUIRED COMPONENTS thread )
-
 # Collect source and header files --------------------------------------------
 set(ASTRA_SOURCES
     Algorithm.cpp
@@ -89,7 +82,6 @@ set_target_properties(
   PROPERTIES POSITION_INDEPENDENT_CODE ON
              COMPILE_FEATURES cxx_std_11
              INCLUDE_DIRECTORIES "${ASTRA_INCLUDES}"
-             LINK_LIBRARIES Boost::thread
              VERSION 0.0.0
              SOVERSION 0
              OUTPUT_NAME "${OUTPUT_NAME}")
