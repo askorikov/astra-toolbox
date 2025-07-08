@@ -112,7 +112,6 @@ setup(
     install_requires=[
         'numpy',
         'scipy',
-        'six',
     ],
     zip_safe=False,
 )
