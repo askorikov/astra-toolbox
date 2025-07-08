@@ -65,6 +65,20 @@ for m in ext_modules:
             'lib',
         )
     ]
+    if m.name in ('astra.utils'):
+        m.sources.append(
+            os.path.join(
+                '.',
+                'astra',
+                'src',
+                'dlpack.cpp'
+            ))
+        m.include_dirs.append(
+            os.path.join(
+                '..',
+                'lib',
+                'include',
+            ))
     if m.name in ('astra.plugin_c', 'astra.algorithm_c'):
         m.sources.append(
             os.path.join(
