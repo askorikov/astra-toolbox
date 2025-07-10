@@ -96,14 +96,20 @@ for m in ext_modules:
                 'PythonPluginAlgorithmFactory.cpp',
             ))
 
+with open('README.md', 'r') as f:
+    long_description = f.read()
+
 setup(
     name='astra-toolbox',
-    version='2.2.0',
-    description='Python interface to the ASTRA Toolbox',
-    author='D.M. Pelt',
-    author_email='D.M.Pelt@cwi.nl',
-    url='https://github.com/astra-toolbox/astra-toolbox',
+    version='2.3.1',
+    description='High-performance GPU primitives and algorithms for 2D and 3D tomography',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     license='GPLv3',
+    project_urls={
+        'Home page': 'https://astra-toolbox.com',
+        'Source': 'https://github.com/astra-toolbox/astra-toolbox'
+    },
     ext_modules=ext_modules,
     packages=[
         'astra',
@@ -113,5 +119,4 @@ setup(
         'numpy',
         'scipy',
     ],
-    zip_safe=False,
 )
