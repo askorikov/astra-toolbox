@@ -36,7 +36,7 @@ phantom_id = astra.data2d.shepp_logan(vol_geom, returnData=False)
 proj_id = astra.create_projector('cuda',proj_geom,vol_geom)
 
 # Create a sinogram from a phantom
-sinogram_id, sinogram = astra.create_sino(P, proj_id)
+sinogram_id, sinogram = astra.create_sino(phantom_id, proj_id)
 
 
 # Set up the parameters for a reconstruction algorithm using the GPU
