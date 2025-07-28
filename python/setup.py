@@ -41,7 +41,7 @@ with open(
 
 ext_modules = cythonize(
     module_list=os.path.join('.', 'astra', '*.pyx'),
-    language_level=2,  # sets python features to python 2
+    language_level=3,  # sets python features to python 3
 )
 
 # Add additional parameters to each Extension
