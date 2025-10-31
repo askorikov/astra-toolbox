@@ -104,9 +104,17 @@ CDataStorageDLPackGPU<DLT>::CDataStorageDLPackGPU(DLT *tensor_m)
 	uint8_t* data = static_cast<uint8_t*>(tensor->data);
 	data += tensor->byte_offset;
 
-	unsigned int pitch = tensor->shape[0];
-	if (tensor->strides)
-		pitch = tensor->strides[1];
+	unsigned int pitch = tensor->shape[2];
+	if (tensor->strides) {
+		std::vector<int64_t> non_singleton_dims, non_singleton_strides;
+		getNonSingletonDims(tensor, non_singleton_dims, non_singleton_strides);
+		if (non_singleton_dims.size() > 1)
+			// Input potentially non-contiguous, use the provided stride
+			pitch = non_singleton_strides[non_singleton_strides.size() - 2];
+		else if (non_singleton_dims.size() == 1)
+			// No meaningful stride, but need to ensure pitch is at least as large as the input size
+			pitch = non_singleton_dims[0];
+	}
 
 	m_hnd = astraCUDA3d::wrapHandle(reinterpret_cast<float*>(data), tensor->shape[2], tensor->shape[1], tensor->shape[0], pitch);
 }
