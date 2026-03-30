@@ -24,7 +24,6 @@
 # -----------------------------------------------------------------------
 #
 # distutils: language = c++
-# distutils: libraries = astra
 
 from __future__ import print_function
 
@@ -59,7 +58,7 @@ cdef CData2DManager * man2d = <CData2DManager * >PyData2DManager.getSingletonPtr
 cdef CProjector2DManager * manProj = <CProjector2DManager * >PyProjector2DManager.getSingletonPtr()
 
 
-cdef extern from "CFloat32CustomPython.h":
+cdef extern from "src/CFloat32CustomPython.h":
     cdef cppclass CFloat32CustomPython:
         CFloat32CustomPython(np.ndarray arrIn)
 
@@ -152,8 +151,8 @@ cdef fillDataObjectScalar(CFloat32Data2D * obj, float s):
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef fillDataObjectArray(CFloat32Data2D * obj, float [:,::1] data):
-    cdef float [:,::1] cView =  <float[:data.shape[0],:data.shape[1]]> obj.getData2D()[0]
+cdef fillDataObjectArray(CFloat32Data2D * obj, const float [:,::1] data):
+    cdef const float [:,::1] cView =  <const float[:data.shape[0],:data.shape[1]]> obj.getData2D()[0]
     cView[:] = data
 
 cdef CFloat32Data2D * getObject(i) except NULL:

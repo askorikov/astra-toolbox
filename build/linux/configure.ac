@@ -23,7 +23,7 @@ dnl along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 dnl
 dnl -----------------------------------------------------------------------
 
-AC_INIT([astra],[2.3.1])
+AC_INIT([astra],[2.4.1])
 AC_CONFIG_SRCDIR([Makefile.in])
 LT_INIT([disable-static])
 
@@ -97,6 +97,7 @@ if test x"$NVCC" != xno; then
   AC_CHECK_LIB(cudart,cudaMalloc, ,HAVECUDA=no)
   AC_CHECK_LIB(cufft,cufftPlan1d, ,HAVECUDA=no)
 
+  LIBS="$SAVED_LIBS"
   LDFLAGS="$BACKUP_CUDA_LDFLAGS"
   unset BACKUP_CUDA_LDFLAGS
   # TODO: check for cuda headers?
@@ -168,6 +169,57 @@ AC_SUBST(HAVECUDA)
 AC_SUBST(LDFLAGS_CUDA)
 AC_SUBST(CPPFLAGS_CUDA)
 AC_SUBST(NVCCFLAGS_EXTRA)
+
+
+# AMD hip
+
+AC_ARG_WITH(hip, [[  --with-hip=path         path of AMD HIP (optional)]],,)
+
+dnl Currently we require this to be explicitly set, even if hipcc is in PATH
+if test x"$with_hip" != xno -a x"$with_hip" != x; then
+  HIPCC_PATH=$PATH
+  if test x"$with_hip" != x -a x"$with_hip" != xyes; then
+    HIPCC_PATH="$with_hip/bin:$HIPCC_PATH"
+  fi
+  AC_PATH_PROG([HIPCC], [hipcc], [no], [$HIPCC_PATH])
+else
+  HIPCC=no
+fi
+
+HAVEHIP=no
+if test x"$HIPCC" != xno; then
+  HAVEHIP=yes
+  BACKUP_HIP_LDFLAGS="$LDFLAGS"
+  if test x"$with_hip" != x -a x"$with_hip" != xyes; then
+    test -d $with_hip/lib64 && LDFLAGS_HIP="-L$with_hip/lib64" || LDFLAGS_HIP="-L$with_hip/lib"
+    CPPFLAGS_HIP="-I$with_hip/include"
+    LDFLAGS="$LDFLAGS $LDFLAGS_HIP"
+  fi
+  AC_CHECK_LIB(amdhip64,hipMalloc, ,HAVEHIP=no)
+  AC_CHECK_LIB(hipfft,hipfftPlan1d, ,HAVEHIP=no)
+
+  LIBS="$SAVED_LIBS"
+  LDFLAGS="$BACKUP_HIP_LDFLAGS"
+  unset BACKUP_HIP_LDFLAGS
+  # TODO: check for HIP headers?
+
+  AC_SUBST(HIPCC)
+fi
+
+dnl Decide if there is specific functionality or any flag to test for hipcc
+dnl if test x"$HAVEHIP" = xyes; then
+  dnl AC_MSG_CHECKING([if hipcc works])
+  dnl ASTRA_CHECK_HIPCC(HAVEHIP,HIPCCFLAGS_EXTRA)
+  dnl AC_MSG_RESULT($HAVEHIP)
+dnl fi
+
+AC_SUBST(HAVEHIP)
+AC_SUBST(LDFLAGS_HIP)
+AC_SUBST(CPPFLAGS_HIP)
+
+if test x"$HAVEHIP$HAVECUDA" = xyesyes; then
+  AC_MSG_ERROR(NVIDIA CUDA and AMD HIP can currently not both be enabled)
+fi
 
 
 # mex, matlab
@@ -255,6 +307,13 @@ if test x"$with_python" != x -a x"$with_python" != xno; then
   AC_MSG_RESULT([$PYTHON])
   HAVEPYTHON=yes
   AC_SUBST(PYTHON)
+  AC_MSG_CHECKING(for setuptools.build_meta)
+  ASTRA_TRY_PYTHON([import setuptools.build_meta],,HAVEPYTHON=no)
+  if test x$HAVEPYTHON = xno; then
+    AC_MSG_RESULT(no)
+    AC_MSG_ERROR(You need setuptools supporting build_meta to install the ASTRA toolbox for Python)
+  fi
+  AC_MSG_RESULT(yes)
   AC_MSG_CHECKING(for numpy module)
   ASTRA_TRY_PYTHON([import numpy],,HAVEPYTHON=no)
   if test x$HAVEPYTHON = xno; then
@@ -266,7 +325,7 @@ if test x"$with_python" != x -a x"$with_python" != xno; then
   ASTRA_TRY_PYTHON([import Cython],,HAVEPYTHON=no)
   if test x$HAVEPYTHON = xno; then
     AC_MSG_RESULT(no)
-    AC_MSG_ERROR(You need the Cython module to use the ASTRA toolbox in Python)
+    AC_MSG_ERROR(You need the Cython module to install the ASTRA toolbox for Python)
   fi
   AC_MSG_RESULT(yes)
   AC_MSG_CHECKING(for scipy module)
@@ -276,20 +335,18 @@ if test x"$with_python" != x -a x"$with_python" != xno; then
     AC_MSG_ERROR(You need the scipy module to use the ASTRA toolbox in Python)
   fi
   AC_MSG_RESULT(yes)
+  AC_MSG_CHECKING(for tomli/tomllib modules)
+  ASTRA_TRY_PYTHON([import tomllib],,HAVEPYTHON=no)
+  if test x$HAVEPYTHON = xno; then
+    ASTRA_TRY_PYTHON([import tomli],HAVEPYTHON=yes,HAVEPYTHON=no)
+    if test x$HAVEPYTHON = xno; then
+      AC_MSG_ERROR(You need the tomli or tomllib module to install the ASTRA toolbox for Python)
+    fi
+  fi
+  AC_MSG_RESULT(yes)
 fi
 
 AC_SUBST(HAVEPYTHON)
-
-AC_ARG_WITH(python-wheel-platform, [[  --with-python-wheel-platform=platform  platform name to use for .whl (optional)]],,)
-PYTHON_WHEEL_PLATFORM=
-AC_MSG_CHECKING(for platform name to use for Python wheel)
-if test x"$with_python_wheel_platform" != x -a x"$with_python_wheel_platform" != xno; then
-  PYTHON_WHEEL_PLATFORM=$with_python_wheel_platform
-  AC_MSG_RESULT($PYTHON_WHEEL_PLATFORM)
-else
-  AC_MSG_RESULT(default)
-fi
-AC_SUBST(PYTHON_WHEEL_PLATFORM)
 
 #OS specific setup
 AC_CANONICAL_HOST
@@ -345,10 +402,13 @@ AC_OUTPUT
 
 echo
 echo "Summary of ASTRA Toolbox build options:"
-echo "  CUDA  : $HAVECUDA"
-echo "  Matlab: $HAVEMATLAB"
-echo "  Octave: $HAVEOCTAVE"
-echo "  Python: $HAVEPYTHON"
+echo "  NVIDIA CUDA: $HAVECUDA"
+if test x$HAVEHIP = xyes; then
+  echo "  AMD HIP    : yes (experimental!)"
+fi
+echo "  Matlab     : $HAVEMATLAB"
+echo "  Octave     : $HAVEOCTAVE"
+echo "  Python     : $HAVEPYTHON"
 echo
 echo "Installation type: $with_install_type"
 case $with_install_type in

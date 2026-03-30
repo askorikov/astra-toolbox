@@ -54,10 +54,9 @@ for m in ext_modules:
             'include',
         )
     ]
-    m.define_macros += [
-        ('ASTRA_PYTHON', None),
-        ('ASTRA_CUDA', None) if ASTRA_USE_CUDA else ('NO_ASTRA_CUDA', None),
-    ]
+    m.define_macros += [('ASTRA_PYTHON', None)]
+    if ASTRA_USE_CUDA:
+        m.define_macros += [('ASTRA_CUDA', None), ('ASTRA_BUILDING_CUDA', None)]
     m.library_dirs += [
         os.path.join(
             os.environ['CONDA_PREFIX'],
@@ -104,7 +103,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='astra-toolbox',
-    version='2.3.1',
+    version='2.4.1',
     description='High-performance GPU primitives and algorithms for 2D and 3D tomography',
     long_description=long_description,
     long_description_content_type='text/markdown',

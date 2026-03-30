@@ -54,35 +54,38 @@ def create_vol_geom(*varargin):
 
 This method can be called in a number of ways:
 
-``create_vol_geom(n_rows_and_cols)``:
-    :returns: A 2D volume geometry of size :math:`N \\times N`.
+``create_vol_geom(N)``:
+
+:returns: A 2D volume geometry of size N x N.
 
 ``create_vol_geom((n_rows, n_cols))``:
-    :returns: A 2D volume geometry of size :math:`n_rows \\times n_cols`.
+
+:returns: A 2D volume geometry of size n_rows x n_cols.
 
 ``create_vol_geom(n_rows, n_cols)``:
-    :returns: A 2D volume geometry of size :math:`n_rows \\times n_cols`.
 
-``create_vol_geom(n_rows, n_cols, minx, maxx, miny, maxy)``:
-    :returns: A 2D volume geometry of size :math:`n_rows \\times n_cols`,
-    windowed as :math:`minx \\leq x \\leq maxx` and :math:`miny \\leq y \\leq
-    maxy`. Note that rows are oriented along the Y axis, and columns along the
-    X axis.
+:returns: A 2D volume geometry of size n_rows x n_cols.
+
+``create_vol_geom(n_rows, n_cols, min_x, max_x, min_y, max_y)``:
+
+:returns: A 2D volume geometry of size n_rows x n_cols, windowed as
+    min_x <= x <= max_x and min_y <= y <= max_y. Note that rows are oriented
+    along the Y axis, and columns along the X axis.
 
 ``create_vol_geom((n_rows, n_cols, n_slices))``:
-    :returns: A 3D volume geometry of size :math:`n_rows \\times n_cols \\times
-    n_slices`.
+
+:returns: A 3D volume geometry of size n_rows x n_cols x n_slices.
 
 ``create_vol_geom(n_rows, n_cols, n_slices)``:
-    :returns: A 3D volume geometry of size :math:`n_rows \\times n_cols \\times
-    n_slices`.
 
-``create_vol_geom(n_rows, n_cols, n_slices, minx, maxx, miny, maxy, minz, maxz)``:
-    :returns: A 3D volume geometry of size :math:`n_rows \\times n_cols \\times
-    n_slices`, windowed as :math:`minx \\leq x \\leq maxx`,
-    :math:`miny \\leq y \\leq maxy`, and :math:`minz \\leq z \\leq maxz`. Note
-    that rows are oriented along the Y axis, columns along the X axis, and
-    slices along the Z axis.
+:returns: A 3D volume geometry of size n_rows x n_cols x n_slices.
+
+``create_vol_geom(n_rows, n_cols, n_slices, min_x, max_x, min_y, max_y, min_z, max_z)``:
+
+:returns: A 3D volume geometry of size n_rows x n_cols x n_slices, windowed as
+    min_x <= x <= max_x, min_y <= y <= max_y, and min_z <= z <= max_z. Note that
+    rows are oriented along the Y axis, columns along the X axis, and slices
+    along the Z axis.
 
 """
     vol_geom = {'option': {}}
@@ -222,6 +225,16 @@ This method can be called in a number of ways:
 :type V: :class:`numpy.ndarray`
 :returns: A cone-beam projection geometry.
 
+``create_proj_geom('cyl_cone_vec', det_row_count, det_col_count, V)``:
+
+:param det_row_count: Number of detector pixel rows.
+:type det_row_count: :class:`int`
+:param det_col_count: Number of detector pixel columns.
+:type det_col_count: :class:`int`
+:param V: Vector array.
+:type V: :class:`numpy.ndarray`
+:returns: A cone-beam projection geometry with cylindrical detector.
+
 ``create_proj_geom('parallel3d_vec', det_row_count, det_col_count, V)``:
 
 :param det_row_count: Number of detector pixel rows.
@@ -243,6 +256,9 @@ This method can be called in a number of ways:
 :param matrix_id: ID of the sparse matrix.
 :type matrix_id: :class:`int`
 :returns: A projection geometry based on a sparse matrix.
+
+.. versionadded:: 2.4
+   Support for cylindrical detectors ('cyl_cone_vec' type).
 
 """
     if intype == 'parallel':
@@ -280,6 +296,12 @@ This method can be called in a number of ways:
         if not args[2].shape[1] == 12:
             raise AstraError('V should be a Nx12 matrix, with N the number of projections')
         return {'type': 'cone_vec','DetectorRowCount':args[0],'DetectorColCount':args[1],'Vectors':args[2]}
+    elif intype == 'cyl_cone_vec':
+        if len(args) < 3:
+            raise Exception('not enough variables: astra_create_proj_geom(cyl_cone_vec, det_row_count, det_col_count, V)')
+        if not args[2].shape[1] == 13:
+            raise Exception('V should be a Nx13 matrix, with N the number of projections')
+        return {'type': 'cyl_cone_vec','DetectorRowCount':args[0],'DetectorColCount':args[1],'Vectors':args[2]}
     elif intype == 'parallel3d_vec':
         if len(args) < 3:
             raise AstraError('Not enough variables. Usage: astra.create_proj_geom(parallel3d_vec, det_row_count, det_col_count, V)')
@@ -500,7 +522,10 @@ def create_reconstruction(rec_type, proj_id, sinogram, iterations=1, use_mask='n
     else:
         sino_id = sinogram
     vol_geom = projector.volume_geometry(proj_id)
-    recon_id = data2d.create('-vol', vol_geom, 0)
+    if rec_type == 'EM_CUDA':
+        recon_id = data2d.create('-vol', vol_geom, 1.0)
+    else:
+        recon_id = data2d.create('-vol', vol_geom, 0.0)
     cfg = astra_dict(rec_type)
     cfg['ProjectorId'] = proj_id
     cfg['ProjectionDataId'] = sino_id

@@ -25,11 +25,14 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 
+#include "astra/cuda/gpu_runtime_wrapper.h"
+
 #include "astra/cuda/3d/util3d.h"
 #include "astra/cuda/3d/mem3d.h"
 #include "astra/cuda/3d/astra3d.h"
 #include "astra/cuda/3d/cone_fp.h"
 #include "astra/cuda/3d/cone_bp.h"
+#include "astra/cuda/3d/cone_cyl.h"
 #include "astra/cuda/3d/par3d_fp.h"
 #include "astra/cuda/3d/par3d_bp.h"
 #include "astra/cuda/3d/fdk.h"
@@ -201,7 +204,7 @@ bool FP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, co
 	SProjectorParams3D params;
 	params.projKernel = projKernel;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
 	if (!ok)
 		return false;
 
@@ -209,7 +212,7 @@ bool FP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, co
 	if (iDetectorSuperSampling == 0)
 		return false;
 
-	auto res = convertAstraGeometry(pVolGeom, pProjGeom, params);
+	auto res = astra::convertAstraGeometry(pVolGeom, pProjGeom, params.volScale);
 
 	if (res.isParallel()) {
 		const SPar3DProjection* pParProjs = res.getParallel();
@@ -217,6 +220,7 @@ bool FP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, co
 		switch (projKernel) {
 		case ker3d_default:
 		case ker3d_2d_weighting:
+		case ker3d_matched_bp:
 			ok &= Par3DFP(volData.d->ptr, projData.d->ptr, dims, pParProjs, params);
 			break;
 		case ker3d_sum_square_weights:
@@ -232,14 +236,23 @@ bool FP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, co
 		case ker3d_default:
 		case ker3d_fdk_weighting:
 		case ker3d_2d_weighting:
+		case ker3d_matched_bp:
 			ok &= ConeFP(volData.d->ptr, projData.d->ptr, dims, pConeProjs, params);
 			break;
 		default:
 			ok = false;
 		}
-	} else {
+	} else if (res.isCylCone()) {
+		const SCylConeProjection* pCylConeProjs = res.getCylCone();
+		switch (projKernel) {
+		case ker3d_default: case ker3d_matched_bp:
+			ok &= ConeCylFP(volData.d->ptr, projData.d->ptr, dims, pCylConeProjs, params);
+			break;
+		default:
+			ok = false;
+		}
+	} else
 		ok = false;
-	}
 
 	return ok;
 }
@@ -251,13 +264,13 @@ bool BP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, co
 	SProjectorParams3D params;
 	params.projKernel = projKernel;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
 	if (!ok)
 		return false;
 
 	params.iRaysPerVoxelDim = iVoxelSuperSampling;
 
-	auto res = convertAstraGeometry(pVolGeom, pProjGeom, params);
+	auto res = astra::convertAstraGeometry(pVolGeom, pProjGeom, params.volScale);
 
 	if (res.isParallel()) {
 		const SPar3DProjection* pParProjs = res.getParallel();
@@ -286,9 +299,25 @@ bool BP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, co
 		default:
 			ok = false;
 		}
-	} else {
+	} else if (res.isCylCone()) {
+		const SCylConeProjection* pCylConeProjs = res.getCylCone();
+		// TODO: Add support for ker3d_2d_weighting?
+		// TODO: Add support for ker3d_fdk_weighting?
+		if (projKernel == ker3d_default) {
+			if (projData.d->arr)
+				ok &= ConeCylBP_Array(volData.d->ptr, projData.d->arr, dims, pCylConeProjs, params);
+			else
+				ok &= ConeCylBP(volData.d->ptr, projData.d->ptr, dims, pCylConeProjs, params);
+		} else if (projKernel == ker3d_matched_bp) {
+			if (projData.d->arr)
+				ok &= ConeCylBP_Array_matched(volData.d->ptr, projData.d->arr, dims, pCylConeProjs, params);
+			else
+				ok &= ConeCylBP_matched(volData.d->ptr, projData.d->ptr, dims, pCylConeProjs, params);
+		} else {
+			ok = false;
+		}
+	} else
 		ok = false;
-	}
 
 	return ok;
 
@@ -303,11 +332,11 @@ bool FDK(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D &projData, c
 	params.fOutputScale = fOutputScale;
 	params.projKernel = ker3d_fdk_weighting;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
 	if (!ok)
 		return false;
 
-	astra::Geometry3DParameters res = convertAstraGeometry(pVolGeom, pProjGeom, params);
+	astra::Geometry3DParameters res = astra::convertAstraGeometry(pVolGeom, pProjGeom, params.volScale);
 
 	if (!res.isCone())
 		return false;

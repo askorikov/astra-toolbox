@@ -25,6 +25,8 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 
+#include "astra/cuda/gpu_runtime_wrapper.h"
+
 #include "astra/cuda/3d/cgls3d.h"
 #include "astra/cuda/3d/sirt3d.h"
 #include "astra/cuda/3d/util3d.h"
@@ -37,13 +39,10 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/cuda/3d/astra3d.h"
 #include "astra/cuda/3d/mem3d.h"
 
-#include "astra/ParallelProjectionGeometry3D.h"
-#include "astra/ParallelVecProjectionGeometry3D.h"
-#include "astra/ConeProjectionGeometry3D.h"
-#include "astra/ConeVecProjectionGeometry3D.h"
-#include "astra/VolumeGeometry3D.h"
 #include "astra/Data3D.h"
 #include "astra/Logging.h"
+
+#include "astra/GeometryUtil3D.h"
 
 #include <iostream>
 #include <cstdio>
@@ -52,202 +51,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 using namespace astraCUDA3d;
 
 namespace astra {
-
-enum CUDAProjectionType3d {
-	PROJ_PARALLEL,
-	PROJ_CONE
-};
-
-
-
-
-
-
-// adjust pProjs to normalize volume geometry
-template<typename ProjectionT>
-static bool convertAstraGeometry_internal(const CVolumeGeometry3D* pVolGeom,
-                          std::vector<ProjectionT>& projs,
-                          SProjectorParams3D& params)
-{
-	assert(pVolGeom);
-
-	float dx = -(pVolGeom->getWindowMinX() + pVolGeom->getWindowMaxX()) / 2;
-	float dy = -(pVolGeom->getWindowMinY() + pVolGeom->getWindowMaxY()) / 2;
-	float dz = -(pVolGeom->getWindowMinZ() + pVolGeom->getWindowMaxZ()) / 2;
-
-	float fx = 1.0f / pVolGeom->getPixelLengthX();
-	float fy = 1.0f / pVolGeom->getPixelLengthY();
-	float fz = 1.0f / pVolGeom->getPixelLengthZ();
-
-	for (size_t i = 0; i < projs.size(); ++i) {
-		projs[i].translate(dx, dy, dz);
-		projs[i].scale(fx, fy, fz);
-	}
-
-	params.fVolScaleX = pVolGeom->getPixelLengthX();
-	params.fVolScaleY = pVolGeom->getPixelLengthY();
-	params.fVolScaleZ = pVolGeom->getPixelLengthZ();
-
-	return true;
-}
-
-
-bool convertAstraGeometry_dims(const CVolumeGeometry3D* pVolGeom,
-                               const CProjectionGeometry3D* pProjGeom,
-                               SDimensions3D& dims)
-{
-	dims.iVolX = pVolGeom->getGridColCount();
-	dims.iVolY = pVolGeom->getGridRowCount();
-	dims.iVolZ = pVolGeom->getGridSliceCount();
-	dims.iProjAngles = pProjGeom->getProjectionCount();
-	dims.iProjU = pProjGeom->getDetectorColCount();
-	dims.iProjV = pProjGeom->getDetectorRowCount();
-
-	if (dims.iVolX <= 0 || dims.iVolX <= 0 || dims.iVolX <= 0)
-		return false;
-	if (dims.iProjAngles <= 0 || dims.iProjU <= 0 || dims.iProjV <= 0)
-		return false;
-
-	return true;
-}
-
-
-bool convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
-                          const CParallelProjectionGeometry3D* pProjGeom,
-                          std::vector<SPar3DProjection>& projs, SProjectorParams3D& params)
-{
-	assert(pVolGeom);
-	assert(pProjGeom);
-	assert(pProjGeom->getProjectionAngles());
-
-	int nth = pProjGeom->getProjectionCount();
-
-	projs = genPar3DProjections(nth,
-	                             pProjGeom->getDetectorColCount(),
-	                             pProjGeom->getDetectorRowCount(),
-	                             pProjGeom->getDetectorSpacingX(),
-	                             pProjGeom->getDetectorSpacingY(),
-	                             pProjGeom->getProjectionAngles());
-
-	bool ok;
-
-	ok = convertAstraGeometry_internal(pVolGeom, projs, params);
-
-	return ok;
-}
-
-bool convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
-                          const CParallelVecProjectionGeometry3D* pProjGeom,
-                          std::vector<SPar3DProjection>& projs, SProjectorParams3D& params)
-{
-	assert(pVolGeom);
-	assert(pProjGeom);
-	assert(pProjGeom->getProjectionVectors());
-
-	int nth = pProjGeom->getProjectionCount();
-
-	projs.resize(nth);
-	for (int i = 0; i < nth; ++i)
-		projs[i] = pProjGeom->getProjectionVectors()[i];
-
-	bool ok;
-
-	ok = convertAstraGeometry_internal(pVolGeom, projs, params);
-
-	return ok;
-}
-
-bool convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
-                          const CConeProjectionGeometry3D* pProjGeom,
-                          std::vector<SConeProjection>& projs, SProjectorParams3D& params)
-{
-	assert(pVolGeom);
-	assert(pProjGeom);
-	assert(pProjGeom->getProjectionAngles());
-
-	int nth = pProjGeom->getProjectionCount();
-
-	projs = genConeProjections(nth,
-	                            pProjGeom->getDetectorColCount(),
-	                            pProjGeom->getDetectorRowCount(),
-	                            pProjGeom->getOriginSourceDistance(),
-	                            pProjGeom->getOriginDetectorDistance(),
-	                            pProjGeom->getDetectorSpacingX(),
-	                            pProjGeom->getDetectorSpacingY(),
-	                            pProjGeom->getProjectionAngles());
-
-	bool ok;
-
-	ok = convertAstraGeometry_internal(pVolGeom, projs, params);
-
-	return ok;
-}
-
-bool convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
-                          const CConeVecProjectionGeometry3D* pProjGeom,
-                          std::vector<SConeProjection>& projs, SProjectorParams3D& params)
-{
-	assert(pVolGeom);
-	assert(pProjGeom);
-	assert(pProjGeom->getProjectionVectors());
-
-	int nth = pProjGeom->getProjectionCount();
-
-	projs.resize(nth);
-	for (int i = 0; i < nth; ++i)
-		projs[i] = pProjGeom->getProjectionVectors()[i];
-
-	bool ok;
-
-	ok = convertAstraGeometry_internal(pVolGeom, projs, params);
-
-	return ok;
-}
-
-
-Geometry3DParameters convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
-                                        const CProjectionGeometry3D* pProjGeom,
-                                        SProjectorParams3D& params)
-{
-	const CConeProjectionGeometry3D* conegeom = dynamic_cast<const CConeProjectionGeometry3D*>(pProjGeom);
-	const CParallelProjectionGeometry3D* par3dgeom = dynamic_cast<const CParallelProjectionGeometry3D*>(pProjGeom);
-	const CParallelVecProjectionGeometry3D* parvec3dgeom = dynamic_cast<const CParallelVecProjectionGeometry3D*>(pProjGeom);
-	const CConeVecProjectionGeometry3D* conevec3dgeom = dynamic_cast<const CConeVecProjectionGeometry3D*>(pProjGeom);
-
-	bool ok;
-
-
-	if (conegeom || conevec3dgeom) {
-		std::vector<SConeProjection> coneProjs;
-		if (conegeom)
-			ok = convertAstraGeometry(pVolGeom, conegeom, coneProjs, params);
-		else
-			ok = convertAstraGeometry(pVolGeom, conevec3dgeom, coneProjs, params);
-
-		if (ok)
-			return Geometry3DParameters::variant_t(std::move(coneProjs));
-		else
-			return Geometry3DParameters::variant_t();
-	} else if (par3dgeom || parvec3dgeom) {
-		std::vector<SPar3DProjection> parProjs;
-		if (par3dgeom)
-			ok = convertAstraGeometry(pVolGeom, par3dgeom, parProjs, params);
-		else
-			ok = convertAstraGeometry(pVolGeom, parvec3dgeom, parProjs, params);
-
-		if (ok)
-			return Geometry3DParameters::variant_t(std::move(parProjs));
-		else
-			return Geometry3DParameters::variant_t();
-	} else {
-		ok = false;
-	}
-
-	return Geometry3DParameters::variant_t();
-}
-
-
-
 
 class AstraSIRT3d_internal {
 public:
@@ -329,12 +132,12 @@ bool AstraSIRT3d::setGeometry(const CVolumeGeometry3D* pVolGeom,
 	if (pData->initialized)
 		return false;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, pData->dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, pData->dims);
 
 	if (!ok)
 		return false;
 
-	pData->projs = convertAstraGeometry(pVolGeom, pProjGeom, pData->params);
+	pData->projs = astra::convertAstraGeometry(pVolGeom, pProjGeom, pData->params.volScale);
 
 	if (!pData->projs.isValid())
 		return false;
@@ -414,13 +217,7 @@ bool AstraSIRT3d::init()
 
 	bool ok;
 
-	if (pData->projs.isParallel())
-		ok = pData->sirt.setPar3DGeometry(pData->dims, pData->projs.getParallel(), pData->params);
-	else if (pData->projs.isCone())
-		ok = pData->sirt.setConeGeometry(pData->dims, pData->projs.getCone(), pData->params);
-	else
-		ok = false;
-
+	ok = pData->sirt.setGeometry(pData->dims, pData->projs, pData->params);
 	if (!ok)
 		return false;
 
@@ -687,12 +484,12 @@ bool AstraCGLS3d::setGeometry(const CVolumeGeometry3D* pVolGeom,
 	if (pData->initialized)
 		return false;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, pData->dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, pData->dims);
 
 	if (!ok)
 		return false;
 
-	pData->projs = convertAstraGeometry(pVolGeom, pProjGeom, pData->params);
+	pData->projs = astra::convertAstraGeometry(pVolGeom, pProjGeom, pData->params.volScale);
 
 	if (!pData->projs.isValid())
 		return false;
@@ -763,13 +560,7 @@ bool AstraCGLS3d::init()
 
 	bool ok;
 
-	if (pData->projs.isParallel())
-		ok = pData->cgls.setPar3DGeometry(pData->dims, pData->projs.getParallel(), pData->params);
-	else if (pData->projs.isCone())
-		ok = pData->cgls.setConeGeometry(pData->dims, pData->projs.getCone(), pData->params);
-	else
-		ok = false;
-
+	ok = pData->cgls.setGeometry(pData->dims, pData->projs, pData->params);
 	if (!ok)
 		return false;
 
@@ -971,15 +762,15 @@ bool astraCudaFP(const float* pfVolume, float* pfProjections,
 
 	params.iRaysPerDetDim = iDetectorSuperSampling;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
 	if (!ok)
 		return false;
 
 	if (iDetectorSuperSampling == 0)
 		return false;
 
-	Geometry3DParameters projs = convertAstraGeometry(pVolGeom, pProjGeom,
-	                                                  params);
+	Geometry3DParameters projs = astra::convertAstraGeometry(pVolGeom, pProjGeom,
+	                                                  params.volScale);
 
 
 	if (iGPUIndex != -1) {
@@ -1059,11 +850,11 @@ bool astraCudaBP(float* pfVolume, const float* pfProjections,
 
 	params.iRaysPerVoxelDim = iVoxelSuperSampling;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
 	if (!ok)
 		return false;
 
-	Geometry3DParameters projs = convertAstraGeometry(pVolGeom, pProjGeom, params);
+	Geometry3DParameters projs = astra::convertAstraGeometry(pVolGeom, pProjGeom, params.volScale);
 
 	if (!projs.isValid())
 		return false;
@@ -1132,12 +923,12 @@ bool astraCudaBP_SIRTWeighted(float* pfVolume,
 
 	params.iRaysPerVoxelDim = iVoxelSuperSampling;
 
-	bool ok = convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
+	bool ok = astra::convertAstraGeometry_dims(pVolGeom, pProjGeom, dims);
 	if (!ok)
 		return false;
 
 
-	Geometry3DParameters projs = convertAstraGeometry(pVolGeom, pProjGeom, params);
+	Geometry3DParameters projs = astra::convertAstraGeometry(pVolGeom, pProjGeom, params.volScale);
 
 	if (!projs.isValid())
 		return false;

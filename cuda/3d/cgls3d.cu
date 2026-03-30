@@ -25,6 +25,8 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 
+#include "astra/cuda/gpu_runtime_wrapper.h"
+
 #include "astra/cuda/3d/cgls3d.h"
 #include "astra/cuda/3d/util3d.h"
 #include "astra/cuda/3d/arith3d.h"
@@ -223,39 +225,6 @@ float CGLS::computeDiffNorm()
 
 	float s = dotProduct3D(D_w, dims.iProjU, dims.iProjAngles, dims.iProjV);
 	return sqrt(s);
-}
-
-
-bool doCGLS(cudaPitchedPtr& D_volumeData, 
-            cudaPitchedPtr& D_sinoData,
-            cudaPitchedPtr& D_maskData,
-            const SDimensions3D& dims, const SConeProjection* angles,
-            unsigned int iterations)
-{
-	CGLS cgls;
-	bool ok = true;
-
-	ok &= cgls.setConeGeometry(dims, angles, SProjectorParams3D());
-	if (D_maskData.ptr)
-		ok &= cgls.enableVolumeMask();
-
-	if (!ok)
-		return false;
-
-	ok = cgls.init();
-	if (!ok)
-		return false;
-
-	if (D_maskData.ptr)
-		ok &= cgls.setVolumeMask(D_maskData);
-
-	ok &= cgls.setBuffers(D_volumeData, D_sinoData);
-	if (!ok)
-		return false;
-
-	ok = cgls.iterate(iterations);
-
-	return ok;
 }
 
 }

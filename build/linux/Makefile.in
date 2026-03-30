@@ -1,6 +1,7 @@
 install_type=@INSTALL_TYPE@
 
 cuda=@HAVECUDA@
+amdhip=@HAVEHIP@
 matlab=@HAVEMATLAB@
 python=@HAVEPYTHON@
 boostutf=@HAVEBOOSTUTF@
@@ -38,6 +39,7 @@ includedir=@includedir@
 libdir=@libdir@
 
 srcdir=@srcdir@
+abs_srcdir=@abs_srcdir@
 abs_top_builddir=@abs_top_builddir@
 
 VPATH=@VPATH_SRCDIR@/../..
@@ -58,20 +60,35 @@ BOOSTUTF_LIBS=@LIBS_BOOSTUTF@
 
 ifeq ($(cuda),yes)
 CPPFLAGS  += @CPPFLAGS_CUDA@ -DASTRA_CUDA
-NVCCFLAGS += @NVCCFLAGS_EXTRA@ @CPPFLAGS_CUDA@ -I$(srcdir)/../../include -DASTRA_CUDA --std c++17
+NVCCFLAGS += @NVCCFLAGS_EXTRA@ @CPPFLAGS_CUDA@ -I$(srcdir)/../../include -DASTRA_CUDA --std c++17 -DASTRA_BUILDING_CUDA
 LDFLAGS   += @LDFLAGS_CUDA@
 LIBS      += -lcudart -lcufft
 NVCC       = @NVCC@
 endif
 
+ifeq ($(amdhip),yes)
+CPPFLAGS   += @CPPFLAGS_HIP@ -DASTRA_CUDA
+# TODO: Check these warnings
+HIPCCFLAGS += @CPPFLAGS_HIP@ -I$(srcdir)/../../include -DASTRA_CUDA --std c++17 -DASTRA_BUILDING_HIP -Wno-unused-result -Wno-inconsistent-missing-override -Wno-absolute-value
+LDFLAGS    += @LDFLAGS_HIP@
+LIBS       += -lhipfft
+HIPCC       = @HIPCC@
+endif
+
 ifeq ($(matlab),yes)
-# TODO: Do we also want -fopenmp for octave?
 CPPFLAGS+=-I$(MATLAB_ROOT)/extern/include -DMATLAB_MEX_FILE @CPPFLAGS_MATLAB@
 ifeq ($(macos),no)
 CXXFLAGS+=-fopenmp
 LDFLAGS+=-fopenmp
 endif
 endif
+ifeq ($(octave),yes)
+ifeq ($(macos),no)
+CXXFLAGS+=-fopenmp
+LDFLAGS+=-fopenmp
+endif
+endif
+
 
 # MODLDFLAGS are the base LDFLAGS for matlab, octave, python modules
 MODLDFLAGS=$(LDFLAGS) -L$(abs_top_builddir)/.libs
@@ -86,7 +103,9 @@ PYLIBDIR := $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_config_v
 PYLIBVER = `basename $(PYINCDIR)`
 CPPFLAGS += -DASTRA_PYTHON -I$(PYINCDIR)
 PYCPPFLAGS  := $(CPPFLAGS)
-PYCPPFLAGS  += -I../include -I../lib/include
+# We need to use abs_srcdir since we will be building Python extension
+# modules from a staging directory
+PYCPPFLAGS  += -I$(abs_srcdir)/../../include -I$(abs_srcdir)/../../lib/include
 PYCXXFLAGS  := $(CXXFLAGS)
 
 # copy the current MODLDFLAGS to PYLDFLAGS, and then add flags for matlab/octave
@@ -95,11 +114,33 @@ MODLDFLAGS += -L$(PYLIBDIR)
 
 MODPYLIBS=-l$(PYLIBVER)
 
-PYBUILDERENV=CXX="${CXX}" CC="${CXX}" CPPFLAGS="${PYCPPFLAGS}" LDFLAGS='${PYLDFLAGS}' CXXFLAGS="${PYCXXFLAGS}" CFLAGS="${PYCXXFLAGS}"
+# ASTRA_CONFIG selection
+ifeq ($(install_type),module)
+ifeq ($(cuda),yes)
+ASTRA_CONFIG = linux_module_cuda
+else
+ifeq ($(amdhip),yes)
+ASTRA_CONFIG = linux_module_cuda
+else
+ASTRA_CONFIG = linux_module
+endif
+endif
+else
+ifeq ($(cuda),yes)
+ASTRA_CONFIG = cuda
+else
+ifeq ($(amdhip),yes)
+ASTRA_CONFIG = cuda
+else
+ASTRA_CONFIG = nocuda
+endif
+endif
+endif
+
+
+PYBUILDERENV=CXX="${CXX}" CC="${CXX}" CPPFLAGS="${PYCPPFLAGS}" LDFLAGS='${PYLDFLAGS}' CXXFLAGS="${PYCXXFLAGS}" CFLAGS="${PYCXXFLAGS}" ASTRA_CONFIG="${ASTRA_CONFIG}"
 PYBUILDERFLAGS=--astra_build_config_dir $(abs_top_builddir)/python/config --astra_build_cython_dir $(abs_top_builddir)/python/cython
 PYBUILDER_BUILD_FLAGS=--build-base=$(abs_top_builddir)/python/build
-
-PYTHON_WHEEL_PLATFORM = @PYTHON_WHEEL_PLATFORM@
 endif
 
 # This is below where PYCPPFLAGS copies CPPFLAGS.  The python code is built
@@ -149,6 +190,7 @@ BASE_OBJECTS=\
 	src/CompositeGeometryManager.lo \
 	src/ConeProjectionGeometry3D.lo \
 	src/ConeVecProjectionGeometry3D.lo \
+	src/CylConeVecProjectionGeometry3D.lo \
 	src/Config.lo \
 	src/Data3D.lo \
 	src/DataProjector.lo \
@@ -244,6 +286,8 @@ CUDA_OBJECTS=\
 	cuda/3d/cgls3d.lo \
 	cuda/3d/cone_fp.lo \
 	cuda/3d/cone_bp.lo \
+	cuda/3d/cone_cyl.lo \
+	cuda/3d/cone_cyl_bp.lo \
 	cuda/3d/fdk.lo \
 	cuda/3d/par3d_fp.lo \
 	cuda/3d/par3d_bp.lo \
@@ -253,9 +297,19 @@ CUDA_OBJECTS=\
 	cuda/3d/arith3d.lo \
 	cuda/3d/mem3d.lo
 
+HIP_OBJECTS=$(patsubst %.lo,%_hip.lo,$(CUDA_OBJECTS))
+
 ALL_OBJECTS=$(BASE_OBJECTS)
+
 ifeq ($(cuda),yes)
-ALL_OBJECTS+=$(CUDA_CXX_OBJECTS) $(CUDA_OBJECTS)
+ALL_OBJECTS+=$(CUDA_CXX_OBJECTS)
+ALL_OBJECTS+=$(CUDA_OBJECTS)
+endif
+
+ifeq ($(amdhip),yes)
+# TODO: Resolve duplicate when both CUDA and HIP are enabled
+ALL_OBJECTS+=$(CUDA_CXX_OBJECTS)
+ALL_OBJECTS+=$(HIP_OBJECTS)
 endif
 
 TEST_OBJECTS=\
@@ -307,6 +361,66 @@ OCTAVE_MEX+=matlab/mex/astra_mex_plugin_c.mex
 endif
 
 
+PYTHON_PY=\
+	astra/__init__.py \
+	astra/algorithm.py \
+	astra/astra.py \
+	astra/creators.py \
+	astra/data2d.py \
+	astra/data3d.py \
+	astra/functions.py \
+	astra/log.py \
+	astra/matlab.py \
+	astra/matrix.py \
+	astra/optomo.py \
+	astra/plugin.py \
+	astra/projector3d.py \
+	astra/projector.py \
+	astra/pythonutils.py \
+	astra/tests.py
+
+PYTHON_PY_PLUGINS=\
+	astra/plugins/__init__.py \
+	astra/plugins/cgls.py \
+	astra/plugins/sirt.py
+
+PYTHON_PYX=\
+	astra/algorithm_c.pyx \
+	astra/astra_c.pyx \
+	astra/data2d_c.pyx \
+	astra/data3d_c.pyx \
+	astra/experimental.pyx \
+	astra/extrautils.pyx \
+	astra/log_c.pyx \
+	astra/matrix_c.pyx \
+	astra/plugin_c.pyx \
+	astra/projector3d_c.pyx \
+	astra/projector_c.pyx \
+	astra/utils.pyx \
+	astra/PyAlgorithmFactory.pxd \
+	astra/PyAlgorithmManager.pxd \
+	astra/PyData2DManager.pxd \
+	astra/PyData3DManager.pxd \
+	astra/PyIncludes.pxd \
+	astra/PyIndexManager.pxd \
+	astra/PyMatrixManager.pxd \
+	astra/PyProjector2DFactory.pxd \
+	astra/PyProjector2DManager.pxd \
+	astra/PyProjector3DFactory.pxd \
+	astra/PyProjector3DManager.pxd \
+	astra/PyXMLDocument.pxd \
+	astra/utils.pxd
+
+PYTHON_SRC=\
+	astra/src/CFloat32CustomPython.h \
+	astra/src/dlpack.cpp \
+	astra/src/dlpack.h \
+	astra/src/PythonPluginAlgorithm.cpp \
+	astra/src/PythonPluginAlgorithmFactory.cpp \
+	astra/src/PythonPluginAlgorithmFactory.h \
+	astra/src/PythonPluginAlgorithm.h
+
+
 OBJECT_DIRS = src/ tests/ cuda/2d/ cuda/3d/ matlab/mex/ ./
 DEPDIRS = $(addsuffix $(DEPDIR),$(OBJECT_DIRS))
 -include $(wildcard $(addsuffix /*.d,$(DEPDIRS)))
@@ -335,14 +449,7 @@ endif
 endif
 
 ifeq ($(python),yes)
-py: libastra.la
-	$(MKDIR) python/build
-	$(MKDIR) python/config
-# Note: setting CC to CXX is intentional. Python uses CC for compilation even if input is C++.
-	cd $(srcdir)/../../python; $(PYBUILDERENV) \
-	$(PYTHON) builder.py $(PYBUILDERFLAGS) \
-	build $(PYBUILDER_BUILD_FLAGS) \
-	$(patsubst %,add_extra_lib --file=%,$(PYPKGDATA))
+py: python-wheel-stamp
 endif
 
 
@@ -358,16 +465,52 @@ matlab/mex/astra_mex_plugin_c.mex: matlab/mex/astra_mex_plugin_c.o $(MATLAB_CXX_
 endif
 endif
 
+python/staging/astra/%.pyx: python/astra/%.pyx
+	@$(MKDIR) "$(@D)"
+	cp -f "$<" "$@"
+python/staging/astra/%.pxd: python/astra/%.pxd
+	@$(MKDIR) "$(@D)"
+	cp -f "$<" "$@"
+python/staging/astra/src/%.h: python/astra/src/%.h
+	@$(MKDIR) "$(@D)"
+	cp -f "$<" "$@"
+python/staging/astra/src/%.cpp: python/astra/src/%.cpp
+	@$(MKDIR) "$(@D)"
+	cp -f "$<" "$@"
+
+ifeq ($(install_type),module)
+python-staging-stamp: libastra.la
+endif
+
+python-staging-stamp: $(addprefix python/,$(PYTHON_PY) $(PYTHON_PY_PLUGINS)) $(addprefix python/staging/,$(PYTHON_PYX) $(PYTHON_SRC)) python/README.md python/pyproject.toml python/setup.py
+	@$(MKDIR) python/staging/astra/plugins
+	@$(MKDIR) python/staging/astra/src
+	cp -f $(addprefix $(srcdir)/../../python/,$(PYTHON_PY)) python/staging/astra
+	cp -f $(addprefix $(srcdir)/../../python/,$(PYTHON_PY_PLUGINS)) python/staging/astra/plugins
+	cp -f $(srcdir)/../../python/README.md python/staging
+	cp -f $(srcdir)/../../python/pyproject.toml python/staging
+	cp -f $(srcdir)/../../python/setup.py python/staging
+ifeq ($(install_type),module)
+	cp -f ".libs/$(SONAME)" python/staging/astra/
+endif
+	@touch "$@"
+
+python-wheel-stamp: python-staging-stamp libastra.la
+	rm -rf python/dist
+	$(MKDIR) python/dist
+	cd python/staging; $(PYBUILDERENV) $(PYTHON) -m pip wheel --no-build-isolation --no-deps --no-cache-dir --wheel-dir ../dist -v .
+	@touch "$@"
+
 libastra.la: $(ALL_OBJECTS)
 	./libtool --mode=link --tag=CXX $(LD) -rpath $(libdir) -o $@ $(LDFLAGS) $(LIBS) $+
 
 %.o: %.cpp
 	$(MKDIR) $(*D)/$(DEPDIR)
-	$(CXX) -Wp,-MMD,"$(*D)/$(DEPDIR)/$(*F).d",-MQ,"$@",-MP $(CXXFLAGS) -fPIC -DPIC $(CPPFLAGS) -c $(<) -o $*.o
+	$(CXX) -MMD -MF "$(*D)/$(DEPDIR)/$(*F).d" -MQ "$@" -MP $(CXXFLAGS) -fPIC -DPIC $(CPPFLAGS) -c $(<) -o $*.o
 
 %.lo: %.cpp
 	$(MKDIR) $(*D)/$(DEPDIR)
-	./libtool --mode=compile --tag=CXX $(CXX) -Wp,-MMD,"$(*D)/$(DEPDIR)/$(*F).d",-MQ,"$@",-MP $(CXXFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
+	./libtool --mode=compile --tag=CXX $(CXX) -MMD -MF "$(*D)/$(DEPDIR)/$(*F).d" -MQ "$@" -MP $(CXXFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
 
 gen_static_libs := `./libtool --features | grep -q 'disable static' && echo no || echo yes`
 
@@ -409,6 +552,37 @@ endif
 	@rm -f $(*F).linkinfo
 endif
 
+ifeq ($(amdhip),yes)
+%_hip.lo: %.cu
+	@# Behave like libtool: compile both a PIC and a non-PIC object file
+	@$(MKDIR) $(*D)
+	@$(MKDIR) $(*D)/.libs
+	@$(MKDIR) $(*D)/$(DEPDIR)
+	$(HIPCC) $(HIPCCFLAGS) -MMD -MF "$(*D)/$(DEPDIR)/$(*F)_hip.d" -MQ "$@" -MP -c $(<) -fPIC -DPIC -o $(*D)/.libs/$(*F)_hip.o
+ifeq ($(gen_static_libs),yes)
+	@$(HIPCC) $(HIPCCFLAGS) -c $(<) -o $(*F)_hip.o >/dev/null 2>&1
+endif
+	@# Generate a fake libtool .lo file
+	@echo "# $*.lo - a libtool object file" > $@
+	@echo "# Generated by" `./libtool --version | head -n 1` >> $@
+	@echo "#" >> $@
+	@echo "# Please DO NOT delete this file!" >> $@
+	@echo "# It is necessary for linking the library." >> $@
+	@echo >> $@
+	@echo "# Name of the PIC object." >> $@
+	@echo "pic_object='.libs/$(*F)_hip.o'" >> $@
+	@echo >> $@
+	@echo "# Name of the non-PIC object." >> $@
+ifeq ($(gen_static_libs),yes)
+	@echo "non_pic_object='$(*F)_hip.o'" >> $@
+else
+	@echo "non_pic_object=none" >> $@
+endif
+	@# Remove generated .linkinfo file
+	@rm -f $(*F).linkinfo
+endif
+
+
 ifeq ($(boostutf),yes)
 test.bin: $(ALL_OBJECTS) $(TEST_OBJECTS)
 	./libtool --mode=link $(LD) -o $@ $(LDFLAGS) $+ $(LIBS) $(BOOSTUTF_LIBS)
@@ -428,6 +602,7 @@ clean:
 	rm -f $(addsuffix /*,$(LIBDIRS))
 	rm -f $(TEST_OBJECTS) test.bin
 	rm -fr python/
+	rm -f *-stamp
 
 distclean: clean
 	rm -f $(srcdir)/config.guess $(srcdir)/config.sub $(srcdir)/ltmain.sh libtool $(srcdir)/install-sh
@@ -450,7 +625,6 @@ ifeq ($(install_type),prefix)
 # libraries into @libdir@, python into site-packages, mex into @datadir@
 install: install-libraries install-matlab install-python-site-packages install-octave
 
-PYPKGDATA=
 MATLABBASE=@datadir@/astra/matlab
 OCTAVEBASE=@datadir@/astra/octave
 endif
@@ -459,7 +633,6 @@ ifeq ($(install_type),dir)
 # everything into @prefix@
 install: install-libraries install-matlab install-python install-octave
 
-PYPKGDATA=
 MATLABBASE=@prefix@/matlab
 OCTAVEBASE=@prefix@/octave
 PYTHONBASE=@prefix@/python
@@ -471,7 +644,6 @@ ifeq ($(install_type),module)
 # modules built with rpath=$ORIGIN
 install: install-matlab install-python-site-packages install-octave
 
-PYPKGDATA=$(abs_top_builddir)/.libs/$(SONAME)
 MATLABBASE=@prefix@/matlab
 OCTAVEBASE=@prefix@/octave
 
@@ -490,34 +662,11 @@ endif
 
 ifeq ($(python),yes)
 install-python: py
-	# Note: setting CC to CXX is intentional. Python uses CC for compilation even if input is C++.
-	cd $(srcdir)/../../python; $(PYBUILDERENV) \
-	$(PYTHON) builder.py $(PYBUILDERFLAGS) \
-	set_dist_dir --dist-dir=$(abs_top_builddir)/python/dist \
-	build $(PYBUILDER_BUILD_FLAGS) \
-	egg_info --egg-base=$(abs_top_builddir)/python \
-	$(patsubst %,add_extra_lib --file=%,$(PYPKGDATA)) \
-	install $(patsubst %,--root=%,$(DESTDIR)) --install-base=@prefix@/python --install-headers=@prefix@/python --install-purelib=@prefix@/python --install-platlib=@prefix@/python --install-scripts=@prefix@/python --install-data=@prefix@/python --old-and-unmanageable --no-compile
-# TODO: docs
+	cd python/dist; $(PYTHON) -m pip install --force-reinstall --no-deps -t $(DESTDIR)$(PYTHONBASE) *.whl
 
 install-python-site-packages: py
-# Note: setting CC to CXX is intentional. Python uses CC for compilation even if input is C++.
-	cd $(srcdir)/../../python; $(PYBUILDERENV) \
-	$(PYTHON) builder.py $(PYBUILDERFLAGS) \
-	set_dist_dir --dist-dir=$(abs_top_builddir)/python/dist \
-	build $(PYBUILDER_BUILD_FLAGS) \
-	egg_info --egg-base=$(abs_top_builddir)/python \
-	$(patsubst %,add_extra_lib --file=%,$(PYPKGDATA)) \
-	install $(patsubst %,--root=% --single-version-externally-managed,$(DESTDIR))
-python-wheel: py
-# Note: setting CC to CXX is intentional. Python uses CC for compilation even if input is C++.
-	cd $(srcdir)/../../python; $(PYBUILDERENV) \
-	$(PYTHON) builder.py $(PYBUILDERFLAGS) --astra_cuda_dependencies \
-	set_dist_dir --dist-dir=$(abs_top_builddir)/python/dist \
-	build $(PYBUILDER_BUILD_FLAGS) \
-	egg_info --egg-base=$(abs_top_builddir)/python \
-	$(patsubst %,add_extra_lib --file=%,$(PYPKGDATA)) \
-	bdist_wheel $(patsubst %,--plat-name %,$(PYTHON_WHEEL_PLATFORM))
+	$(PYTHON) -m pip uninstall -y astra-toolbox
+	cd python/dist; $(PYTHON) -m pip install --force-reinstall --no-deps $(patsubst %,--root=%,$(DESTDIR)) *.whl
 else
 install-python-site-packages:
 install-python:
@@ -537,7 +686,6 @@ install-matlab: $(MATLAB_MEX) install-matlab-so
 		$(INSTALL_SH) -m 644 $(srcdir)/../../matlab/algorithms/$$D/*.m $(DESTDIR)$(MATLABBASE)/algorithms/$$D; \
 	done
 
-# TODO: docs
 else
 install-matlab:
 endif
@@ -550,7 +698,6 @@ install-octave: $(OCTAVE_MEX) install-octave-so
 	$(INSTALL_SH) -m 755 -d $(DESTDIR)$(OCTAVEBASE)/tools
 	$(INSTALL_SH) -m 755 $(OCTAVE_MEX) $(DESTDIR)$(OCTAVEBASE)/mex
 	$(INSTALL_SH) -m 644 $(srcdir)/../../matlab/tools/*.m $(DESTDIR)$(OCTAVEBASE)/tools
-# TODO: docs
 else
 install-octave:
 endif
@@ -592,11 +739,11 @@ config.status: $(srcdir)/configure
 	@echo "configure script has changed. Re-running it with last parameters"
 	$(SHELL) ./config.status --recheck
 
-$(srcdir)/configure: $(srcdir)/configure.ac
+$(srcdir)/configure: $(srcdir)/configure.ac $(srcdir)/acinclude.m4
 	@echo "configure.ac has been changed. Regenerating configure script"
 	cd $(srcdir) && $(SHELL) ./autogen.sh
 
-.PHONY: all mex test clean distclean install install-libraries py install-python-site-packages install-python install-matlab install-octave install-matlab-so install-octave-so install-headers install-dev python-wheel
+.PHONY: all mex test clean distclean install install-libraries py install-python-site-packages install-python install-matlab install-octave install-matlab-so install-octave-so install-headers install-dev
 
 # don't remove intermediate files:
 .SECONDARY:

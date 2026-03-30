@@ -34,6 +34,7 @@ CUDA_CC = {
   (12,4): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_90,compute_90",
   (12,5): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_90,compute_90",
   (12,8): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_100,sm_100;compute_101,sm_101;compute_120,sm_120;compute_120,compute_120",
+  (12,9): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_100,sm_100;compute_101,sm_101;compute_120,sm_120;compute_120,compute_120",
 }
 
 def create_mex_project(name, uuid14):
@@ -191,6 +192,8 @@ P_astra["filters"]["CUDA\\cuda source"] = [
 "cuda\\3d\\cgls3d.cu",
 "cuda\\3d\\cone_bp.cu",
 "cuda\\3d\\cone_fp.cu",
+"cuda\\3d\\cone_cyl.cu",
+"cuda\\3d\\cone_cyl_bp.cu",
 "cuda\\3d\\darthelper3d.cu",
 "cuda\\3d\\fdk.cu",
 "cuda\\3d\\mem3d.cu",
@@ -244,6 +247,7 @@ P_astra["filters"]["Geometries\\source"] = [
 "dc27bff7-4256-4311-a131-47612a44af20",
 "src\\ConeProjectionGeometry3D.cpp",
 "src\\ConeVecProjectionGeometry3D.cpp",
+"src\\CylConeVecProjectionGeometry3D.cpp",
 "src\\FanFlatProjectionGeometry2D.cpp",
 "src\\FanFlatVecProjectionGeometry2D.cpp",
 "src\\GeometryUtil2D.cpp",
@@ -323,6 +327,7 @@ P_astra["filters"]["CUDA\\cuda headers"] = [
 "include\\astra\\cuda\\3d\\cgls3d.h",
 "include\\astra\\cuda\\3d\\cone_bp.h",
 "include\\astra\\cuda\\3d\\cone_fp.h",
+"include\\astra\\cuda\\3d\\cone_cyl.h",
 "include\\astra\\cuda\\3d\\darthelper3d.h",
 "include\\astra\\cuda\\3d\\dims3d.h",
 "include\\astra\\cuda\\3d\\fdk.h",
@@ -384,6 +389,7 @@ P_astra["filters"]["Geometries\\headers"] = [
 "eddb31ba-0db7-4ab1-a490-36623aaf8901",
 "include\\astra\\ConeProjectionGeometry3D.h",
 "include\\astra\\ConeVecProjectionGeometry3D.h",
+"include\\astra\\CylConeVecProjectionGeometry3D.h",
 "include\\astra\\FanFlatProjectionGeometry2D.h",
 "include\\astra\\FanFlatVecProjectionGeometry2D.h",
 "include\\astra\\GeometryUtil2D.h",
@@ -663,7 +669,7 @@ def write_main_project14():
       print('      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>', file=F)
     d='      <PreprocessorDefinitions>'
     if c.cuda:
-      d+="ASTRA_CUDA;"
+      d+="ASTRA_CUDA;ASTRA_BUILDING_CUDA;"
     d+="__SSE2__;"
     d+="DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;"
     d+='%(PreprocessorDefinitions)</PreprocessorDefinitions>'
@@ -734,7 +740,7 @@ def write_mex_project14(P):
 #      print('      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>', file=F)
     d='      <PreprocessorDefinitions>'
     if c.cuda:
-      d+="ASTRA_CUDA;"
+      d+="ASTRA_CUDA;ASTRA_BUILDING_CUDA;"
     d+="__SSE2__;"
     d+="MATLAB_MEXCMD_RELEASE=700;"
 #    d+="DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;"

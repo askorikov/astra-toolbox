@@ -1,6 +1,6 @@
 package:
   name: libastra
-  version: '2.3.1'
+  version: '2.4.1'
 
 source:
   git_url: https://github.com/astra-toolbox/astra-toolbox.git
@@ -60,7 +60,7 @@ requirements:
     - cudatoolkit {{ cudatoolkit_dep }} # [win or linux]
     {% endif %}
   run_constrained:
-    - cuda-version {{ cudatoolkit }} # [win or linux]
+    - cuda-version {{ cudatoolkit_dep }} # [win or linux]
     - pytorch-cuda {{ pytorchcuda_dep }} # [win or linux]
   {% if cuda_dep_type == 'modular' %}
     - cudatoolkit {{ cudatoolkit_dep }} # [win or linux]

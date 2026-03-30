@@ -9,6 +9,7 @@ set(ASTRA_SOURCES
     CompositeGeometryManager.cpp
     ConeProjectionGeometry3D.cpp
     ConeVecProjectionGeometry3D.cpp
+    CylConeVecProjectionGeometry3D.cpp
     Config.cpp
     Data3D.cpp
     DataProjector.cpp
@@ -137,6 +138,8 @@ if(ASTRA_USE_CUDA)
       "${CMAKE_SOURCE_DIR}/cuda/3d/cgls3d.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/cone_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/cone_bp.cu"
+      "${CMAKE_SOURCE_DIR}/cuda/3d/cone_cyl.cu"
+      "${CMAKE_SOURCE_DIR}/cuda/3d/cone_cyl_bp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/fdk.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/par3d_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/par3d_bp.cu"
@@ -163,6 +166,12 @@ if(ASTRA_USE_CUDA)
     astra
     PUBLIC
     "ASTRA_CUDA")
+  
+  # ASTRA_BUILDING_CUDA chooses CUDA in favour of HIP toolchain
+  target_compile_definitions(
+    astra
+    PUBLIC
+    "ASTRA_BUILDING_CUDA")
 
   target_link_libraries(
     astra

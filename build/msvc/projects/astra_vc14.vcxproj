@@ -52,7 +52,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
-    <Import Project="$(CUDA_PATH_V12_8)\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.8.props" />
+    <Import Project="$(CUDA_PATH_V12_9)\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.9.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug_CUDA|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -110,7 +110,7 @@
       <AdditionalIncludeDirectories>..\..\..\lib\include;..\..\..\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>ASTRA_CUDA;__SSE2__;DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ASTRA_CUDA;ASTRA_BUILDING_CUDA;__SSE2__;DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <SDLCheck>true</SDLCheck>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -158,7 +158,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <PreprocessorDefinitions>ASTRA_CUDA;__SSE2__;DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ASTRA_CUDA;ASTRA_BUILDING_CUDA;__SSE2__;DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <SDLCheck>true</SDLCheck>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -298,6 +298,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="..\..\..\src\CylConeVecProjectionGeometry3D.cpp" />
     <ClCompile Include="..\..\..\src\Data3D.cpp" />
     <ClCompile Include="..\..\..\src\DataProjector.cpp" />
     <ClCompile Include="..\..\..\src\DataProjectorPolicies.cpp" />
@@ -383,6 +384,7 @@
     <ClInclude Include="..\..\..\include\astra\CudaSartAlgorithm.h" />
     <ClInclude Include="..\..\..\include\astra\CudaSirtAlgorithm.h" />
     <ClInclude Include="..\..\..\include\astra\CudaSirtAlgorithm3D.h" />
+    <ClInclude Include="..\..\..\include\astra\CylConeVecProjectionGeometry3D.h" />
     <ClInclude Include="..\..\..\include\astra\Data3D.h" />
     <ClInclude Include="..\..\..\include\astra\DataProjector.h" />
     <ClInclude Include="..\..\..\include\astra\DataProjectorPolicies.h" />
@@ -460,6 +462,7 @@
     <ClInclude Include="..\..\..\include\astra\cuda\3d\astra3d.h" />
     <ClInclude Include="..\..\..\include\astra\cuda\3d\cgls3d.h" />
     <ClInclude Include="..\..\..\include\astra\cuda\3d\cone_bp.h" />
+    <ClInclude Include="..\..\..\include\astra\cuda\3d\cone_cyl.h" />
     <ClInclude Include="..\..\..\include\astra\cuda\3d\cone_fp.h" />
     <ClInclude Include="..\..\..\include\astra\cuda\3d\darthelper3d.h" />
     <ClInclude Include="..\..\..\include\astra\cuda\3d\dims3d.h" />
@@ -551,6 +554,14 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </CudaCompile>
+    <CudaCompile Include="..\..\..\cuda\3d\cone_cyl.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </CudaCompile>
+    <CudaCompile Include="..\..\..\cuda\3d\cone_cyl_bp.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </CudaCompile>
     <CudaCompile Include="..\..\..\cuda\3d\cone_fp.cu">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -597,6 +608,6 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="$(CUDA_PATH_V12_8)\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.8.targets" />
+    <Import Project="$(CUDA_PATH_V12_9)\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.9.targets" />
   </ImportGroup>
 </Project>

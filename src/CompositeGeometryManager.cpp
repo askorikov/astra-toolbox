@@ -33,6 +33,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/VolumeGeometry3D.h"
 #include "astra/ConeProjectionGeometry3D.h"
 #include "astra/ConeVecProjectionGeometry3D.h"
+#include "astra/CylConeVecProjectionGeometry3D.h"
 #include "astra/ParallelProjectionGeometry3D.h"
 #include "astra/ParallelVecProjectionGeometry3D.h"
 #include "astra/Projector3D.h"
@@ -64,37 +65,6 @@ CCompositeGeometryManager::CCompositeGeometryManager()
 		m_GPUIndices = s_params->GPUIndices;
 	}
 }
-
-
-// JOB:
-//
-// VolumePart
-// ProjectionPart
-// FP-or-BP
-// SET-or-ADD
-
-
-// Running a set of jobs:
-//
-// [ Assume OUTPUT Parts in a single JobSet don't alias?? ]
-// Group jobs by output Part
-// One thread per group?
-
-// Automatically split parts if too large
-// Performance model for odd-sized tasks?
-// Automatically split parts if not enough tasks to fill available GPUs
-
-
-// Splitting:
-// Constraints:
-//   number of sub-parts divisible by N
-//   max size of sub-parts
-
-// For splitting on both input and output side:
-//   How to divide up memory? (Optimization problem; compute/benchmark)
-//   (First approach: 0.5/0.5)
-
-
 
 
 
@@ -244,12 +214,28 @@ reducePart(const CCompositeGeometryManager::CPart *base,
            const CCompositeGeometryManager::CPart *other);
 
 
+static bool requiresInputGPUAllocation(const CCompositeGeometryManager::SJobInternal &job)
+{
+	if (job.pInput->pData->getStorage()->isMemory())
+		return true;
+	if (job.eType == CCompositeGeometryManager::JOB_FDK)
+		return true;
+	return false;
+}
+
+static bool requiresOutputGPUAllocation(const CCompositeGeometryManager::CPart &part)
+{
+	return part.pData->getStorage()->isMemory();
+}
+
 bool CCompositeGeometryManager::splitJobs(TJobSetInternal &jobs, size_t maxSize, int div, TJobSetInternal &split)
 {
 	int maxBlockDim = astraCUDA3d::maxBlockDimension();
 	ASTRA_DEBUG("Found max block dim %d", maxBlockDim);
 
 	split.clear();
+
+	size_t costHeuristic = 0;
 
 	for (TJobSetInternal::iterator i = jobs.begin(); i != jobs.end(); ++i)
 	{
@@ -262,18 +248,47 @@ bool CCompositeGeometryManager::splitJobs(TJobSetInternal &jobs, size_t maxSize,
 		//    b. split input part
 		//    c. create jobs for new (input,output) subparts
 
+		bool allInputOnGPU = true;
+		for (const SJobInternal &job : L) {
+			if (requiresInputGPUAllocation(job)) {
+				allInputOnGPU = false;
+				break;
+			}
+		}
+
+		// Three potential buffers: input, output, texture array
+		size_t outputMemSize;
+		if (requiresOutputGPUAllocation(*pOutput)) {
+			if (allInputOnGPU) {
+				// Needed buffers: output, texture array
+				outputMemSize = maxSize/2;
+			} else {
+				// Needed buffers: input, output, texture array
+				outputMemSize = maxSize/3;
+			}
+		} else {
+			// Output already on GPU
+			outputMemSize = 1024ULL*1024*1024*1024;
+		}
+
 		TPartList splitOutput;
-		splitPart(2, std::move(pOutput), splitOutput, maxSize/3, UINT_MAX, div);
+		// We now split projection data over the angle axis by default,
+		// and volume data over the z axis.
+		int axisOutput = 2;
+		if (pOutput->eType == CPart::PART_PROJ)
+			axisOutput = 1;
+
+		splitPart(axisOutput, std::move(pOutput), splitOutput, outputMemSize, UINT_MAX, div);
 #if 0
+		// There are currently no reasons to split the output over other axes
+
 		TPartList splitOutput2;
-		for (TPartList::iterator i_out = splitOutput.begin(); i_out != splitOutput.end(); ++i_out) {
-			std::shared_ptr<CPart> outputPart = *i_out;
-			outputPart.get()->split(0, splitOutput2, UINT_MAX, UINT_MAX, 1);
+		for (std::unique_ptr<CPart> &i_out : splitOutput) {
+			splitPart(axisOutputSecond, std::move(i_out), splitOutput2, UINT_MAX, UINT_MAX, 1);
 		}
 		splitOutput.clear();
-		for (TPartList::iterator i_out = splitOutput2.begin(); i_out != splitOutput2.end(); ++i_out) {
-			std::shared_ptr<CPart> outputPart = *i_out;
-					outputPart.get()->split(1, splitOutput, UINT_MAX, UINT_MAX, 1);
+		for (std::unique_ptr<CPart> &i_out : splitOutput2) {
+			splitPart(axisOutputThird, std::move(i_out), splitOutput, UINT_MAX, UINT_MAX, 1);
 		}
 		splitOutput2.clear();
 #endif
@@ -300,19 +315,39 @@ bool CCompositeGeometryManager::splitJobs(TJobSetInternal &jobs, size_t maxSize,
 					continue;
 				}
 
-				size_t remainingSize = ( maxSize - outputPart->getSize() ) / 2;
+				size_t remainingSize = maxSize;
+				if (requiresOutputGPUAllocation(*outputPart))
+					remainingSize -= outputPart->getSize();
+				if (requiresInputGPUAllocation(job))
+					remainingSize /= 2;
 
+				int axisInputFirst = 2;
+				int axisInputSecond = 0;
+				int axisInputThird = 1;
+				if (input->eType == CPart::PART_PROJ) {
+					axisInputFirst = 1;
+					axisInputSecond = 2;
+					axisInputThird = 0;
+				}
+
+				// We do two passes: first split along all dimensions only on maxBlockDim,
+				// and then split again along the first axis on memory size.
 				TPartList splitInput;
-				splitPart(2, std::move(input), splitInput, remainingSize, maxBlockDim, 1);
+				splitPart(axisInputFirst, std::move(input), splitInput, 1024ULL*1024*1024*1024, maxBlockDim, 1);
 				TPartList splitInput2;
 				for (std::unique_ptr<CPart> &inputPart : splitInput)
-					splitPart(0, std::move(inputPart), splitInput2, 1024ULL*1024*1024*1024, maxBlockDim, 1);
+					splitPart(axisInputSecond, std::move(inputPart), splitInput2, 1024ULL*1024*1024*1024, maxBlockDim, 1);
 
 				splitInput.clear();
+
+				TPartList splitInput3;
 				for (std::unique_ptr<CPart> &inputPart : splitInput2)
-					splitPart(1, std::move(inputPart), splitInput, 1024ULL*1024*1024*1024, maxBlockDim, 1);
+					splitPart(axisInputThird, std::move(inputPart), splitInput3, 1024ULL*1024*1024*1024, maxBlockDim, 1);
 
 				splitInput2.clear();
+				for (std::unique_ptr<CPart> &inputPart : splitInput3)
+					splitPart(axisInputFirst, std::move(inputPart), splitInput, remainingSize, maxBlockDim, 1);
+				splitInput3.clear();
 
 				ASTRA_DEBUG("Input split into %zu parts", splitInput.size());
 
@@ -324,6 +359,21 @@ bool CCompositeGeometryManager::splitJobs(TJobSetInternal &jobs, size_t maxSize,
 					newjob.pProjector = job.pProjector;
 					newjob.FDKSettings = job.FDKSettings;
 					newjob.eType = job.eType;
+
+					size_t tx, ty, tz;
+					newjob.pInput->getDims(tx, ty, tz);
+
+					switch (newjob.eType) {
+						case JOB_FP:
+							costHeuristic += outputPart.get()->getSize() * cbrt(tx * ty * tz);
+							break;
+						case JOB_BP: case JOB_FDK:
+							costHeuristic += outputPart.get()->getSize() * ty;
+							break;
+						case JOB_NOP:
+							break;
+					}
+
 					newjobs.push_back(std::move(newjob));
 
 					// Second and later (input) parts should always be added to
@@ -335,6 +385,8 @@ bool CCompositeGeometryManager::splitJobs(TJobSetInternal &jobs, size_t maxSize,
 			split.push_back(std::make_pair(std::move(outputPart), std::move(newjobs)));
 		}
 	}
+
+	ASTRA_DEBUG("splitJobs cost heuristic: %zu", costHeuristic);
 
 	return true;
 }
@@ -512,6 +564,7 @@ reduceVolumePart(const CCompositeGeometryManager::CVolumePart *base,
 		while (zmin < zmax) {
 			int zmid = (zmin + zmax + 1) / 2;
 
+			// Test if this top area is entirely out of range
 			bool ok = testVolumeRange(fullRange, base->pGeom, other->pGeom,
 			                          0, zmid);
 
@@ -536,6 +589,7 @@ reduceVolumePart(const CCompositeGeometryManager::CVolumePart *base,
 		while (zmin < zmax) {
 			int zmid = (zmin + zmax) / 2;
 
+			// Test if this bottom area is entirely out of range
 			bool ok = testVolumeRange(fullRange, base->pGeom, other->pGeom,
 			                          zmid, base->pGeom->getGridSliceCount());
 
@@ -734,6 +788,42 @@ void CCompositeGeometryManager::CProjectionPart::getDims(size_t &x, size_t &y, s
 	z = pGeom->getDetectorRowCount();
 }
 
+static std::pair<int, int> reduceProjectionAngular(const CVolumeGeometry3D* pVolGeom, const CProjectionGeometry3D* pProjGeom)
+{
+	int iFirstAngle = pProjGeom->getProjectionCount();
+	int iLastAngle = -1;
+	for (int i = 0; i < pProjGeom->getProjectionCount(); ++i) {
+		double umin, umax;
+		double vmin, vmax;
+
+		double pixx = pVolGeom->getPixelLengthX();
+		double pixy = pVolGeom->getPixelLengthY();
+		double pixz = pVolGeom->getPixelLengthZ();
+
+		pProjGeom->getProjectedBBoxSingleAngle(i,
+		                            pVolGeom->getWindowMinX() - 0.5 * pixx,
+		                            pVolGeom->getWindowMaxX() + 0.5 * pixx,
+		                            pVolGeom->getWindowMinY() - 0.5 * pixy,
+		                            pVolGeom->getWindowMaxY() + 0.5 * pixy,
+		                            pVolGeom->getWindowMinZ() - 0.5 * pixz,
+		                            pVolGeom->getWindowMaxZ() + 0.5 * pixz,
+		                            umin, umax,
+		                            vmin, vmax);
+
+		bool out = umin >= pProjGeom->getDetectorColCount() || umax <= 0 ||
+		           vmin >= pProjGeom->getDetectorRowCount() || vmax <= 0;
+
+		if (!out && i <= iFirstAngle)
+			iFirstAngle = i;
+		if (!out)
+			iLastAngle = i;
+	}
+
+	ASTRA_DEBUG("reduceProjectionAngular: found [%d,%d]", iFirstAngle, iLastAngle);
+
+	return std::pair<int, int>(iFirstAngle, iLastAngle);
+}
+
 static CCompositeGeometryManager::CProjectionPart* createSubProjectionPart(const CCompositeGeometryManager::CProjectionPart* base,
                                                                            unsigned int offset_u,
                                                                            unsigned int offset_th,
@@ -762,25 +852,40 @@ reduceProjectionPart(const CCompositeGeometryManager::CProjectionPart *base,
 	const CCompositeGeometryManager::CVolumePart *other = dynamic_cast<const CCompositeGeometryManager::CVolumePart *>(_other);
 	assert(other);
 
-	std::pair<double, double> r = reduceProjectionVertical(other->pGeom, base->pGeom);
+	std::pair<int, int> angleRange = reduceProjectionAngular(other->pGeom, base->pGeom);
+	if (angleRange.first > angleRange.second) {
+		ASTRA_DEBUG("Reduce projection: no angular overlap");
+		return std::unique_ptr<CCompositeGeometryManager::CPart>(createSubProjectionPart(base, 0, 0, 0, nullptr));
+	}
+	ASTRA_DEBUG("Reduce projection: angular from %d - %d to %d - %d", base->subY, base->subY + base->pGeom->getProjectionCount(), base->subY + angleRange.first, base->subY + angleRange.second);
+
+	CProjectionGeometry3D *pSubGeom1 = getSubProjectionGeometry_Angle(base->pGeom, angleRange.first, angleRange.second - angleRange.first + 1);
+
+	// sub->subY += angleRange.first;
+
+
+	std::pair<double, double> r = reduceProjectionVertical(other->pGeom, pSubGeom1);
+
 	// fprintf(stderr, "v extent: %f %f\n", r.first, r.second);
 	int _vmin = (int)floor(r.first - 1.0);
 	int _vmax = (int)ceil(r.second + 1.0);
 	if (_vmin < 0)
 		_vmin = 0;
-	if (_vmax > base->pGeom->getDetectorRowCount())
-		_vmax = base->pGeom->getDetectorRowCount();
+	if (_vmax > pSubGeom1->getDetectorRowCount())
+		_vmax = pSubGeom1->getDetectorRowCount();
 
 	if (_vmin >= _vmax) {
 		_vmin = _vmax = 0;
 	}
 
-	CProjectionGeometry3D *pSubGeom = 0;
+	CProjectionGeometry3D *pSubGeom2 = 0;
 	if (_vmin != _vmax)
-		pSubGeom = getSubProjectionGeometry_V(base->pGeom, _vmin, _vmax - _vmin);
-	CCompositeGeometryManager::CProjectionPart *sub = createSubProjectionPart(base, 0, 0, _vmin, pSubGeom);
+		pSubGeom2 = getSubProjectionGeometry_V(pSubGeom1, _vmin, _vmax - _vmin);
+	CCompositeGeometryManager::CProjectionPart *sub = createSubProjectionPart(base, 0, 0, _vmin, pSubGeom2);
 
-	ASTRA_DEBUG("Reduce projection from %d - %d to %d - %d", base->subZ, base->subZ + base->pGeom->getDetectorRowCount(), base->subZ + _vmin, base->subZ + _vmax);
+	delete pSubGeom1;
+
+	ASTRA_DEBUG("Reduce projection: rows from %d - %d to %d - %d", base->subZ, base->subZ + base->pGeom->getDetectorRowCount(), base->subZ + _vmin, base->subZ + _vmax);
 
 	return std::unique_ptr<CCompositeGeometryManager::CPart>(sub);
 }
@@ -1226,7 +1331,7 @@ public:
 
 		unlock();
 
-		return true;	
+		return true;
 	}
 	void lock() {
 		m_mutex.lock();
@@ -1396,7 +1501,7 @@ void CCompositeGeometryManager::setGlobalGPUParams(const SGPUParams& params)
 	for (unsigned int i = 0; i < params.GPUIndices.size(); ++i)
 		s << " " << params.GPUIndices[i];
 	std::string ss = s.str();
-	ASTRA_DEBUG(ss.c_str());
+	ASTRA_DEBUG("%s", ss.c_str());
 	ASTRA_DEBUG("Memory: %zu", params.memory);
 }
 

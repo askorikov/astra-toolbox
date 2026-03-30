@@ -25,6 +25,8 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 
+#include "astra/cuda/gpu_runtime_wrapper.h"
+
 #include "astra/cuda/3d/util3d.h"
 
 #include "astra/cuda/2d/util.h"
@@ -276,7 +278,7 @@ cudaArray* allocateVolumeArray(const SDimensions3D& dims)
 	extentA.height = dims.iVolY;
 	extentA.depth = dims.iVolZ;
 
-	if (!checkCuda(cudaMalloc3DArray(&cuArray, &channelDesc, extentA), "allocateVolumeArray 3D")) {
+	if (!checkCuda(cudaMalloc3DArray(&cuArray, &channelDesc, extentA, 0), "allocateVolumeArray 3D")) {
 		ASTRA_ERROR("Failed to allocate %dx%dx%d GPU array", dims.iVolX, dims.iVolY, dims.iVolZ);
 		return 0;
 	}
@@ -292,7 +294,7 @@ cudaArray* allocateProjectionArray(const SDimensions3D& dims)
 	extentA.height = dims.iProjAngles;
 	extentA.depth = dims.iProjV;
 
-	if (!checkCuda(cudaMalloc3DArray(&cuArray, &channelDesc, extentA), "allocateProjectionArray 3D")) {
+	if (!checkCuda(cudaMalloc3DArray(&cuArray, &channelDesc, extentA, 0), "allocateProjectionArray 3D")) {
 		ASTRA_ERROR("Failed to allocate %dx%dx%d GPU array", dims.iProjU, dims.iProjAngles, dims.iProjV);
 		return 0;
 	}

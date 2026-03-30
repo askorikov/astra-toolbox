@@ -25,13 +25,13 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 
+#include "astra/cuda/gpu_runtime_wrapper.h"
+
 #include "astra/cuda/3d/util3d.h"
 #include "astra/cuda/3d/dims3d.h"
 
 #include <cstdio>
 #include <cassert>
-
-#include <cuda.h>
 
 namespace astraCUDA3d {
 
@@ -229,9 +229,9 @@ bool transferConstants(const SPar3DProjection* angles, unsigned int iProjAngles,
 			// of a 2d parallel beam kernel. To be used when only
 			// operating on a single slice.
 			Vec3 ev(0, 0, 1);
-			s[i] = 1.0 / scaled_cross3(u,ev,Vec3(params.fVolScaleX,params.fVolScaleY,params.fVolScaleZ)).norm();
+			s[i] = 1.0 / scaled_cross3(u,ev,Vec3(params.volScale.fX,params.volScale.fY,params.volScale.fZ)).norm();
 		} else {
-			s[i] = 1.0 / scaled_cross3(u,v,Vec3(params.fVolScaleX,params.fVolScaleY,params.fVolScaleZ)).norm();
+			s[i] = 1.0 / scaled_cross3(u,v,Vec3(params.volScale.fX,params.volScale.fY,params.volScale.fZ)).norm();
 		}
 	}
 
@@ -260,7 +260,7 @@ bool Par3DBP_Array(cudaPitchedPtr D_volumeData,
 		return false;
 	}
 
-	float fOutputScale = params.fOutputScale * params.fVolScaleX * params.fVolScaleY * params.fVolScaleZ;
+	float fOutputScale = params.fOutputScale * params.volScale.fX * params.volScale.fY * params.volScale.fZ;
 
 	bool ok = true;
 
