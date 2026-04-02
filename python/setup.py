@@ -64,6 +64,7 @@ for m in ext_modules:
             'lib',
         )
     ]
+    m.libraries += ['astra']
     m.extra_compile_args += [
         '/std:c++17' if platform.system() == 'Windows' else '-std=c++17'
     ]
