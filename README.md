@@ -23,16 +23,22 @@ Requirements: [conda](https://conda.io/) Python environment, with 64 bit Python 
 
 We provide packages for the ASTRA Toolbox in the `astra-toolbox` channel for the
 conda package manager. We depend on CUDA packages available from the `nvidia`
-channel. To install ASTRA into the current conda environement, run:
+channel. To install ASTRA into the current conda environment, run:
 
 ```
 conda install -c astra-toolbox -c nvidia astra-toolbox
 ```
 
-We also provide development packages between releases occasionally:
+We also support ASTRA Toolbox distribution in the [conda-forge](https://conda-forge.org/) channel. It may be less up-to-date than the main channel, but it includes builds for Linux on ARM and macOS on Apple Silicon (CPU-only functionality):
 
+```bash
+conda install -c conda-forge astra-toolbox
 ```
-conda install -c astra-toolbox/label/dev -c nvidia astra-toolbox
+
+CPU-only builds (no GPU acceleration and CUDA dependencies, 2D algorithms only) can be installed from conda-forge using:
+
+```bash
+conda install -c conda-forge astra-toolbox=*=py*
 ```
 
 ### Linux, using pip for Python packages
@@ -129,15 +135,32 @@ This will install the Astra library and C++ headers.
 
 ### macOS, from source
 
-Use the Homebrew package manager to install libtool, autoconf, automake.
+Install Xcode and use the Homebrew package manager to install libtool, autoconf, automake.
+
+#### For MATLAB
 
 ```
 cd build/linux
 ./autogen.sh
-CPPFLAGS="-I/usr/local/include" NVCCFLAGS="-I/usr/local/include" ./configure \
-  --with-cuda=/usr/local/cuda \
-  --with-matlab=/Applications/MATLAB_R2016b.app \
+./configure \
+  --with-matlab=/Applications/MATLAB_R2026a.app \
   --prefix=$HOME/astra \
+  --with-install-type=module
+make
+make install
+```
+
+#### For Python
+
+Note that macOS (Apple Silicon) packages are available from [conda-forge](https://conda-forge.org/) distribution of ASTRA.
+
+Additional requirements: Python (3.x), pip, setuptools, Cython, scipy
+
+```
+cd build/linux
+./autogen.sh
+./configure \
+  --with-python=python3 \
   --with-install-type=module
 make
 make install

@@ -40,17 +40,25 @@ namespace astra {
 //----------------------------------------------------------------------------------------
 // Constructor
 CCglsAlgorithm::CCglsAlgorithm() 
+	: r(nullptr),
+	  w(nullptr),
+	  z(nullptr),
+	  p(nullptr),
+	  alpha(0.0f),
+	  beta(0.0f),
+	  gamma(0.0f),
+	  m_iIteration(0)
 {
-	_clear();
+
 }
 
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 CCglsAlgorithm::CCglsAlgorithm(CProjector2D* _pProjector, 
-							   CFloat32ProjectionData2D* _pSinogram, 
-							   CFloat32VolumeData2D* _pReconstruction)
+                               CFloat32ProjectionData2D* _pSinogram,
+                               CFloat32VolumeData2D* _pReconstruction)
+	: CCglsAlgorithm()
 {
-	_clear();
 	initialize(_pProjector, _pSinogram, _pReconstruction);
 }
 
@@ -58,39 +66,10 @@ CCglsAlgorithm::CCglsAlgorithm(CProjector2D* _pProjector,
 // Destructor
 CCglsAlgorithm::~CCglsAlgorithm() 
 {
-	clear();
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CCglsAlgorithm::_clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	r = NULL;
-	w = NULL;
-	z = NULL;
-	p = NULL;
-	alpha = 0.0f;
-	beta = 0.0f;
-	gamma = 0.0f;
-	m_iIteration = 0;
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CCglsAlgorithm::clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	ASTRA_DELETE(r);
-	ASTRA_DELETE(w);
-	ASTRA_DELETE(z);
-	ASTRA_DELETE(p);
-	alpha = 0.0f;
-	beta = 0.0f;
-	gamma = 0.0f;
-	m_iIteration = 0;
-	m_bIsInitialized = false;
+	delete r;
+	delete w;
+	delete z;
+	delete p;
 }
 
 //----------------------------------------------------------------------------------------
@@ -100,6 +79,12 @@ bool CCglsAlgorithm::_check()
 	// check base class
 	ASTRA_CONFIG_CHECK(CReconstructionAlgorithm2D::_check(), "CGLS", "Error in ReconstructionAlgorithm2D initialization");
 
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "CGLS", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pReconstruction->isFloat32Memory(), "CGLS", "Reconstruction data object not a float32 host memory object");
+
+	ASTRA_CONFIG_CHECK(!m_bUseSinogramMask || m_pSinogramMask->isFloat32Memory(), "CGLS", "Projection mask object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(!m_bUseReconstructionMask || m_pReconstructionMask->isFloat32Memory(), "CGLS", "Reconstruction mask object not a float32 host memory object");
+
 	return true;
 }
 
@@ -107,12 +92,9 @@ bool CCglsAlgorithm::_check()
 // Initialize - Config
 bool CCglsAlgorithm::initialize(const Config& _cfg)
 {
-	ConfigReader<CAlgorithm> CR("CglsAlgorithm", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CAlgorithm> CR("CglsAlgorithm", this, _cfg);
 
 	// initialization of parent class
 	if (!CReconstructionAlgorithm2D::initialize(_cfg)) {
@@ -120,10 +102,10 @@ bool CCglsAlgorithm::initialize(const Config& _cfg)
 	}
 
 	// member variables
-	r = new CFloat32ProjectionData2D(m_pSinogram->getGeometry());
-	w = new CFloat32ProjectionData2D(m_pSinogram->getGeometry());
-	z = new CFloat32VolumeData2D(m_pReconstruction->getGeometry());
-	p = new CFloat32VolumeData2D(m_pReconstruction->getGeometry());
+	r = createCFloat32ProjectionData2DMemory(m_pSinogram->getGeometry());
+	w = createCFloat32ProjectionData2DMemory(m_pSinogram->getGeometry());
+	z = createCFloat32VolumeData2DMemory(m_pReconstruction->getGeometry());
+	p = createCFloat32VolumeData2DMemory(m_pReconstruction->getGeometry());
 
 	alpha = 0.0f;
 	beta = 0.0f;
@@ -137,13 +119,10 @@ bool CCglsAlgorithm::initialize(const Config& _cfg)
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 bool CCglsAlgorithm::initialize(CProjector2D* _pProjector, 
-								CFloat32ProjectionData2D* _pSinogram, 
-								CFloat32VolumeData2D* _pReconstruction)
+                                CFloat32ProjectionData2D* _pSinogram, 
+                                CFloat32VolumeData2D* _pReconstruction)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pProjector = _pProjector;
@@ -151,10 +130,10 @@ bool CCglsAlgorithm::initialize(CProjector2D* _pProjector,
 	m_pReconstruction = _pReconstruction;
 
 	// member variables
-	r = new CFloat32ProjectionData2D(m_pSinogram->getGeometry());
-	w = new CFloat32ProjectionData2D(m_pSinogram->getGeometry());
-	z = new CFloat32VolumeData2D(m_pReconstruction->getGeometry());
-	p = new CFloat32VolumeData2D(m_pReconstruction->getGeometry());
+	r = createCFloat32ProjectionData2DMemory(m_pSinogram->getGeometry());
+	w = createCFloat32ProjectionData2DMemory(m_pSinogram->getGeometry());
+	z = createCFloat32VolumeData2DMemory(m_pReconstruction->getGeometry());
+	p = createCFloat32VolumeData2DMemory(m_pReconstruction->getGeometry());
 
 	// success
 	m_bIsInitialized = _check();
@@ -196,7 +175,7 @@ bool CCglsAlgorithm::run(int _iNrIterations)
 
 	if (m_iIteration == 0) {
 		// r = b;
-		r->copyData(m_pSinogram->getData());
+		r->copyData(*m_pSinogram);
 
 		// z = A'*b;
 		z->setData(0.0f);
@@ -207,12 +186,12 @@ bool CCglsAlgorithm::run(int _iNrIterations)
 			z->clampMax(m_fMaxValue);
 
 		// p = z;
-		p->copyData(z->getData());
+		p->copyData(*z);
 
 		// gamma = dot(z,z);
 		gamma = 0.0f;
 		for (i = 0; i < z->getSize(); ++i) {
-			gamma += z->getData()[i] * z->getData()[i];
+			gamma += z->getFloat32Memory()[i] * z->getFloat32Memory()[i];
 		}
 		m_iIteration++;
 	}
@@ -228,18 +207,18 @@ bool CCglsAlgorithm::run(int _iNrIterations)
 		// alpha = gamma/dot(w,w);
 		float32 tmp = 0;
 		for (i = 0; i < w->getSize(); ++i) {
-			tmp += w->getData()[i] * w->getData()[i];
+			tmp += w->getFloat32Memory()[i] * w->getFloat32Memory()[i];
 		}
 		alpha = gamma / tmp;
 
 		// x = x + alpha*p;
 		for (i = 0; i < m_pReconstruction->getSize(); ++i) {
-			m_pReconstruction->getData()[i] += alpha * p->getData()[i];
+			m_pReconstruction->getFloat32Memory()[i] += alpha * p->getFloat32Memory()[i];
 		}
 
 		// r = r - alpha*w;
 		for (i = 0; i < r->getSize(); ++i) {
-			r->getData()[i] -= alpha * w->getData()[i];
+			r->getFloat32Memory()[i] -= alpha * w->getFloat32Memory()[i];
 		}
 
 		// z = A'*r;
@@ -258,7 +237,7 @@ bool CCglsAlgorithm::run(int _iNrIterations)
 		// gamma = dot(z,z);
 		gamma = 0;
 		for (i = 0; i < z->getSize(); ++i) {
-			gamma += z->getData()[i] * z->getData()[i];
+			gamma += z->getFloat32Memory()[i] * z->getFloat32Memory()[i];
 		}
 
 		// beta = gamma*beta;
@@ -266,11 +245,14 @@ bool CCglsAlgorithm::run(int _iNrIterations)
 
 		// p = z + beta*p;
 		for (i = 0; i < z->getSize(); ++i) {
-			p->getData()[i] = z->getData()[i] + beta * p->getData()[i];
+			p->getFloat32Memory()[i] = z->getFloat32Memory()[i] + beta * p->getFloat32Memory()[i];
 		}
 		
 		m_iIteration++;
 	}
+
+	delete pForwardProjector;
+	delete pBackProjector;
 
 	return true;
 }

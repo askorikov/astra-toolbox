@@ -28,7 +28,12 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 #include "dlpack/dlpack.h"
 
+#include "astra/Data2D.h"
 #include "astra/Data3D.h"
+
+#ifdef ASTRA_CUDA
+#include "astra/cuda/dlpack_support.h"
+#endif
 
 #include <Python.h>
 #include <cstdio>
@@ -43,18 +48,6 @@ protected:
 	DLT *m_pTensor;
 
 };
-
-#ifdef ASTRA_CUDA
-template<class DLT>
-class CDataStorageDLPackGPU : public astra::CDataGPU {
-public:
-	CDataStorageDLPackGPU(DLT* tensor);
-	virtual ~CDataStorageDLPackGPU();
-
-protected:
-	DLT *m_pTensor;
-};
-#endif
 
 template<class DLT>
 CDataStorageDLPackCPU<DLT>::CDataStorageDLPackCPU(DLT *tensor_m)
@@ -93,33 +86,6 @@ static void getNonSingletonDims(DLTensor *tensor,
 	}
 }
 
-#ifdef ASTRA_CUDA
-template<class DLT>
-CDataStorageDLPackGPU<DLT>::CDataStorageDLPackGPU(DLT *tensor_m)
-	: m_pTensor(tensor_m)
-{
-	DLTensor *tensor = &m_pTensor->dl_tensor;
-
-	uint8_t* data = static_cast<uint8_t*>(tensor->data);
-	data += tensor->byte_offset;
-	unsigned int pitch = tensor->shape[2];
-
-	m_hnd = astraCUDA3d::wrapHandle(reinterpret_cast<float*>(data), tensor->shape[2], tensor->shape[1], tensor->shape[0], pitch);
-}
-
-
-template<class DLT>
-CDataStorageDLPackGPU<DLT>::~CDataStorageDLPackGPU()
-{
-	if (m_pTensor) {
-		assert(m_pTensor->deleter);
-		m_pTensor->deleter(m_pTensor);
-	}
-	m_pTensor = nullptr;
-}
-#endif
-
-
 static bool isContiguous(DLTensor *tensor)
 {
 	if (!tensor->strides)
@@ -143,7 +109,8 @@ static bool isContiguous(DLTensor *tensor)
 }
 
 
-bool checkDLTensor(DLTensor *tensor, std::array<int, 3> dims, std::string &error)
+template<size_t D>
+bool checkDLTensor(DLTensor *tensor, std::array<int, D> dims, std::string &error)
 {
 	// data type
 	if (tensor->dtype.code != kDLFloat || tensor->dtype.bits != 32)
@@ -157,16 +124,30 @@ bool checkDLTensor(DLTensor *tensor, std::array<int, 3> dims, std::string &error
 	}
 
 	// shape
-	if (tensor->ndim != 3) {
-		error = "Data must be three-dimensional";
-		return false;
-	}
+	if constexpr (D == 2) {
+		if (tensor->ndim != 2) {
+			error = "Data must be two-dimensional";
+			return false;
+		}
 
-	if (tensor->shape[0] != dims[2] || tensor->shape[1] != dims[1] ||
-	    tensor->shape[2] != dims[0])
-	{
-		error = astra::StringUtil::format("Data shape (%zd x %zd x %zd) does not match geometry (%d x %d x %d)", tensor->shape[0], tensor->shape[1], tensor->shape[2], dims[2], dims[1], dims[0]);
-		return false;
+		if (tensor->shape[0] != dims[1] || tensor->shape[1] != dims[0])
+		{
+			error = astra::StringUtil::format("Data shape (%zd x %zd) does not match geometry (%d x %d)", tensor->shape[0], tensor->shape[1], dims[1], dims[0]);
+			return false;
+		}
+	}
+	if constexpr (D == 3) {
+		if (tensor->ndim != 3) {
+			error = "Data must be three-dimensional";
+			return false;
+		}
+
+		if (tensor->shape[0] != dims[2] || tensor->shape[1] != dims[1] ||
+		    tensor->shape[2] != dims[0])
+		{
+			error = astra::StringUtil::format("Data shape (%zd x %zd x %zd) does not match geometry (%d x %d x %d)", tensor->shape[0], tensor->shape[1], tensor->shape[2], dims[2], dims[1], dims[0]);
+			return false;
+		}
 	}
 
 	if (!isContiguous(tensor)) {
@@ -179,33 +160,34 @@ bool checkDLTensor(DLTensor *tensor, std::array<int, 3> dims, std::string &error
 }
 
 
-template<class DLT>
-astra::CDataStorage *getDLTensorStorage(DLT *tensor_m, std::array<int, 3> dims, std::string &error)
+template<class DLT, size_t D>
+astra::CDataStorage *getDLTensorStorage(DLT *tensor_m, std::array<int, D> dims, std::string &error)
 {
 	DLTensor *tensor = &tensor_m->dl_tensor;
+
+#ifdef ASTRA_CUDA
+	if (astraCUDA::isSupportedDLPackGPUType(tensor->device.device_type)) {
+		if (!checkDLTensor(tensor, dims, error))
+			return nullptr;
+		return astraCUDA::wrapDLTensor(tensor_m);
+	}
+#endif
 
 	switch (tensor->device.device_type) {
 	case kDLCPU:
 	case kDLCUDAHost:
+	case kDLROCMHost:
 		if (!checkDLTensor(tensor, dims, error))
 			return nullptr;
 		return new CDataStorageDLPackCPU(tensor_m);
-#ifdef ASTRA_CUDA
-	case kDLCUDA:
-	case kDLCUDAManaged:
-		if (!checkDLTensor(tensor, dims, error))
-			return nullptr;
-		return new CDataStorageDLPackGPU(tensor_m);
-#endif
-	// TODO: Add support for kDLROCM, for the case when astra is built with
-	// cuda-but-actually-hip, and later when it is in its own namespace
 	default:
 		error = "Unsupported dlpack device type";
 		return nullptr;
 	}
 }
 
-astra::CDataStorage *getDLTensorStorage(PyObject *obj, std::array<int, 3> dims, std::string &error)
+template<size_t D>
+astra::CDataStorage *getDLTensorStorage(PyObject *obj, std::array<int, D> dims, std::string &error)
 {
 	if (!PyCapsule_CheckExact(obj)) {
 		error = "Invalid capsule";
@@ -261,6 +243,35 @@ astra::CDataStorage *getDLTensorStorage(PyObject *obj, std::array<int, 3> dims, 
 	}
 
 	return storage;
+}
+
+astra::CFloat32VolumeData2D* getDLTensor(PyObject *obj, const astra::CVolumeGeometry2D &pGeom, std::string &error)
+{
+	if (!PyCapsule_CheckExact(obj))
+		return nullptr;
+
+	// x,y,z
+	std::array<int, 2> dims{pGeom.getGridColCount(), pGeom.getGridRowCount()};
+
+	astra::CDataStorage *storage = getDLTensorStorage(obj, dims, error);
+	if (!storage)
+		return nullptr;
+
+	return new astra::CFloat32VolumeData2D(pGeom, storage);
+}
+astra::CFloat32ProjectionData2D* getDLTensor(PyObject *obj, const astra::CProjectionGeometry2D &pGeom, std::string &error)
+{
+	if (!PyCapsule_CheckExact(obj))
+		return nullptr;
+
+	// x,y,z
+	std::array<int, 2> dims{pGeom.getDetectorCount(), pGeom.getProjectionAngleCount()};
+
+	astra::CDataStorage *storage = getDLTensorStorage(obj, dims, error);
+	if (!storage)
+		return nullptr;
+
+	return new astra::CFloat32ProjectionData2D(pGeom, storage);
 }
 
 astra::CFloat32VolumeData3D* getDLTensor(PyObject *obj, const astra::CVolumeGeometry3D &pGeom, std::string &error)

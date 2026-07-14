@@ -40,18 +40,24 @@ namespace astra {
 
 //----------------------------------------------------------------------------------------
 // Constructor
-CSirtAlgorithm::CSirtAlgorithm() 
+CSirtAlgorithm::CSirtAlgorithm()
+	: m_pTotalRayLength(nullptr),
+	  m_pTotalPixelWeight(nullptr),
+	  m_pDiffSinogram(nullptr),
+	  m_pTmpVolume(nullptr),
+	  m_iIterationCount(0),
+	  m_fLambda(1.0f)
 {
-	_clear();
+
 }
 
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 CSirtAlgorithm::CSirtAlgorithm(CProjector2D* _pProjector, 
-							   CFloat32ProjectionData2D* _pSinogram, 
-							   CFloat32VolumeData2D* _pReconstruction)
+                               CFloat32ProjectionData2D* _pSinogram, 
+                               CFloat32VolumeData2D* _pReconstruction)
+	: CSirtAlgorithm()
 {
-	_clear();
 	initialize(_pProjector, _pSinogram, _pReconstruction);
 }
 
@@ -59,39 +65,10 @@ CSirtAlgorithm::CSirtAlgorithm(CProjector2D* _pProjector,
 // Destructor
 CSirtAlgorithm::~CSirtAlgorithm() 
 {
-	clear();
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CSirtAlgorithm::_clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	m_bIsInitialized = false;
-
-	m_pTotalRayLength = NULL;
-	m_pTotalPixelWeight = NULL;
-	m_pDiffSinogram = NULL;
-	m_pTmpVolume = NULL;
-
-	m_fLambda = 1.0f;
-	m_iIterationCount = 0;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CSirtAlgorithm::clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	m_bIsInitialized = false;
-
-	ASTRA_DELETE(m_pTotalRayLength);
-	ASTRA_DELETE(m_pTotalPixelWeight);
-	ASTRA_DELETE(m_pDiffSinogram);
-	ASTRA_DELETE(m_pTmpVolume);
-
-	m_fLambda = 1.0f;
-	m_iIterationCount = 0;
+	delete m_pTotalRayLength;
+	delete m_pTotalPixelWeight;
+	delete m_pDiffSinogram;
+	delete m_pTmpVolume;
 }
 
 //----------------------------------------------------------------------------------------
@@ -108,6 +85,12 @@ bool CSirtAlgorithm::_check()
 	ASTRA_CONFIG_CHECK(m_pDiffSinogram, "SIRT", "Invalid DiffSinogram Object");
 	ASTRA_CONFIG_CHECK(m_pDiffSinogram->isInitialized(), "SIRT", "Invalid DiffSinogram Object");
 
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "SIRT", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pReconstruction->isFloat32Memory(), "SIRT", "Reconstruction data object not a float32 host memory object");
+
+	ASTRA_CONFIG_CHECK(!m_bUseSinogramMask || m_pSinogramMask->isFloat32Memory(), "SIRT", "Projection mask object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(!m_bUseReconstructionMask || m_pReconstructionMask->isFloat32Memory(), "SIRT", "Reconstruction mask object not a float32 host memory object");
+
 	return true;
 }
 
@@ -115,12 +98,9 @@ bool CSirtAlgorithm::_check()
 // Initialize - Config
 bool CSirtAlgorithm::initialize(const Config& _cfg)
 {
-	ConfigReader<CAlgorithm> CR("SirtAlgorithm", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CAlgorithm> CR("SirtAlgorithm", this, _cfg);
 
 	// initialization of parent class
 	if (!CReconstructionAlgorithm2D::initialize(_cfg)) {
@@ -148,10 +128,7 @@ bool CSirtAlgorithm::initialize(CProjector2D* _pProjector,
 								CFloat32ProjectionData2D* _pSinogram, 
 								CFloat32VolumeData2D* _pReconstruction)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pProjector = _pProjector;
@@ -173,10 +150,10 @@ bool CSirtAlgorithm::initialize(CProjector2D* _pProjector,
 void CSirtAlgorithm::_init()
 {
 	// create data objects
-	m_pTotalRayLength = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
-	m_pTotalPixelWeight = new CFloat32VolumeData2D(m_pProjector->getVolumeGeometry());
-	m_pDiffSinogram = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
-	m_pTmpVolume = new CFloat32VolumeData2D(m_pProjector->getVolumeGeometry());
+	m_pTotalRayLength = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
+	m_pTotalPixelWeight = createCFloat32VolumeData2DMemory(m_pProjector->getVolumeGeometry());
+	m_pDiffSinogram = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
+	m_pTmpVolume = createCFloat32VolumeData2DMemory(m_pProjector->getVolumeGeometry());
 }
 
 //----------------------------------------------------------------------------------------
@@ -232,7 +209,7 @@ bool CSirtAlgorithm::run(int _iNrIterations)
 	// forward projection, difference calculation and raylength/pixelweight computation
 	pFirstForwardProjector->project();
 
-	float32* pfT = m_pTotalPixelWeight->getData();
+	float32* pfT = m_pTotalPixelWeight->getFloat32Memory();
 	for (size_t i = 0; i < m_pTotalPixelWeight->getSize(); ++i) {
 		float32 x = pfT[i];
 		if (x < -eps || x > eps)
@@ -241,7 +218,7 @@ bool CSirtAlgorithm::run(int _iNrIterations)
 			x = 0.0f;
 		pfT[i] = m_fLambda * x;
 	}
-	pfT = m_pTotalRayLength->getData();
+	pfT = m_pTotalRayLength->getFloat32Memory();
 	for (size_t i = 0; i < m_pTotalRayLength->getSize(); ++i) {
 		float32 x = pfT[i];
 		if (x < -eps || x > eps)

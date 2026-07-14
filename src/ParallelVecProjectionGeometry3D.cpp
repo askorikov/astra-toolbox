@@ -60,13 +60,6 @@ CParallelVecProjectionGeometry3D::CParallelVecProjectionGeometry3D(int _iProject
 	           std::move(_ProjectionAngles));
 }
 
-//----------------------------------------------------------------------------------------
-// Destructor.
-CParallelVecProjectionGeometry3D::~CParallelVecProjectionGeometry3D()
-{
-
-}
-
 //---------------------------------------------------------------------------------------
 // Initialize - Config
 bool CParallelVecProjectionGeometry3D::initialize(const Config& _cfg)
@@ -141,16 +134,7 @@ bool CParallelVecProjectionGeometry3D::initialize(int _iProjectionAngleCount,
 // Clone
 CProjectionGeometry3D* CParallelVecProjectionGeometry3D::clone() const
 {
-	CParallelVecProjectionGeometry3D* res = new CParallelVecProjectionGeometry3D();
-	res->m_bInitialized				= m_bInitialized;
-	res->m_iProjectionAngleCount	= m_iProjectionAngleCount;
-	res->m_iDetectorRowCount		= m_iDetectorRowCount;
-	res->m_iDetectorColCount		= m_iDetectorColCount;
-	res->m_iDetectorTotCount		= m_iDetectorTotCount;
-	res->m_fDetectorSpacingX		= m_fDetectorSpacingX;
-	res->m_fDetectorSpacingY		= m_fDetectorSpacingY;
-	res->m_ProjectionAngles		= m_ProjectionAngles;
-	return res;
+	return new CParallelVecProjectionGeometry3D(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -170,7 +154,6 @@ bool CParallelVecProjectionGeometry3D::isEqual(const CProjectionGeometry3D * _pG
 	if (m_iProjectionAngleCount != pGeom2->m_iProjectionAngleCount) return false;
 	if (m_iDetectorRowCount != pGeom2->m_iDetectorRowCount) return false;
 	if (m_iDetectorColCount != pGeom2->m_iDetectorColCount) return false;
-	if (m_iDetectorTotCount != pGeom2->m_iDetectorTotCount) return false;
 	//if (m_fDetectorSpacingX != pGeom2->m_fDetectorSpacingX) return false;
 	//if (m_fDetectorSpacingY != pGeom2->m_fDetectorSpacingY) return false;
 	
@@ -179,13 +162,6 @@ bool CParallelVecProjectionGeometry3D::isEqual(const CProjectionGeometry3D * _pG
 	}
 
 	return true;
-}
-
-//----------------------------------------------------------------------------------------
-// is of type
-bool CParallelVecProjectionGeometry3D::isOfType(const std::string& _sType) const
-{
-	 return (_sType == "parallel3d_vec");
 }
 
 //----------------------------------------------------------------------------------------
@@ -245,7 +221,7 @@ void CParallelVecProjectionGeometry3D::projectPoint(double fX, double fY, double
 
 bool CParallelVecProjectionGeometry3D::_check()
 {
-	ASTRA_CONFIG_CHECK(m_ProjectionAngles.size() == m_iProjectionAngleCount, "ParallelVecProjectionGeometry3D", "Number of vectors does not match number of angles");
+	ASTRA_CONFIG_CHECK(m_ProjectionAngles.size() == (size_t)m_iProjectionAngleCount, "ParallelVecProjectionGeometry3D", "Number of vectors does not match number of angles");
 
 	// TODO
 	return true;

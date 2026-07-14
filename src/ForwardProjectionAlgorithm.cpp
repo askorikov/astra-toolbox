@@ -28,6 +28,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/ForwardProjectionAlgorithm.h"
 
 #include "astra/AstraObjectManager.h"
+#include "astra/DataProjector.h"
 #include "astra/DataProjectorPolicies.h"
 
 #include "astra/Logging.h"
@@ -40,16 +41,23 @@ namespace astra {
 
 //----------------------------------------------------------------------------------------
 // Constructor - Default
-CForwardProjectionAlgorithm::CForwardProjectionAlgorithm() 
+CForwardProjectionAlgorithm::CForwardProjectionAlgorithm()
+	: m_pProjector(nullptr),
+	  m_pSinogram(nullptr),
+	  m_pVolume(nullptr),
+	  m_pVolumeMask(nullptr),
+	  m_bUseVolumeMask(false),
+	  m_pSinogramMask(nullptr),
+	  m_bUseSinogramMask(false)
 {
-	_clear();
+
 }
 
 //----------------------------------------------------------------------------------------
 // Constructor
 CForwardProjectionAlgorithm::CForwardProjectionAlgorithm(CProjector2D* _pProjector, CFloat32VolumeData2D* _pVolume, CFloat32ProjectionData2D* _pSinogram)
+	: CForwardProjectionAlgorithm()
 {
-	_clear();
 	initialize(_pProjector, _pVolume, _pSinogram);
 }
 
@@ -57,33 +65,7 @@ CForwardProjectionAlgorithm::CForwardProjectionAlgorithm(CProjector2D* _pProject
 // Destructor
 CForwardProjectionAlgorithm::~CForwardProjectionAlgorithm() 
 {
-	delete m_pForwardProjector;
-	clear();
-}
 
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CForwardProjectionAlgorithm::_clear()
-{
-	m_pProjector = NULL;
-	m_pSinogram = NULL;
-	m_pVolume = NULL;
-	m_pForwardProjector = NULL;
-	m_bUseSinogramMask = false;
-	m_bUseVolumeMask = false;
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CForwardProjectionAlgorithm::clear()
-{
-	m_pProjector = NULL;
-	m_pSinogram = NULL;
-	m_pVolume = NULL;
-	m_bUseSinogramMask = false;
-	m_bUseVolumeMask = false;
-	m_bIsInitialized = false;
 }
 
 //----------------------------------------------------------------------------------------
@@ -104,7 +86,11 @@ bool CForwardProjectionAlgorithm::_check()
 	ASTRA_CONFIG_CHECK(m_pSinogram->getGeometry().isEqual(m_pProjector->getProjectionGeometry()), "ForwardProjection", "Projection Data not compatible with the specified Projector.");
 	ASTRA_CONFIG_CHECK(m_pVolume->getGeometry().isEqual(m_pProjector->getVolumeGeometry()), "ForwardProjection", "Volume Data not compatible with the specified Projector.");
 
-	ASTRA_CONFIG_CHECK(m_pForwardProjector, "ForwardProjection", "Invalid FP Policy");
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "ForwardProjection", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pVolume->isFloat32Memory(), "ForwardProjection", "Volume data object not a float32 host memory object");
+
+	ASTRA_CONFIG_CHECK(!m_bUseSinogramMask || m_pSinogramMask->isFloat32Memory(), "ForwardProjection", "Projection mask object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(!m_bUseVolumeMask || m_pVolumeMask->isFloat32Memory(), "ForwardProjection", "Volume mask object not a float32 host memory object");
 
 	// success
 	return true;
@@ -114,12 +100,9 @@ bool CForwardProjectionAlgorithm::_check()
 // Initialize, use a Config object
 bool CForwardProjectionAlgorithm::initialize(const Config& _cfg)
 {
-	ConfigReader<CAlgorithm> CR("ForwardProjectionAlgorithm", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CAlgorithm> CR("ForwardProjectionAlgorithm", this, _cfg);
 
 	bool ok = true;
 	int id = -1;
@@ -137,6 +120,9 @@ bool CForwardProjectionAlgorithm::initialize(const Config& _cfg)
 	ok &= CR.getRequiredID("VolumeDataId", id);
 	m_pVolume = dynamic_cast<CFloat32VolumeData2D*>(CData2DManager::getSingleton().get(id));
 
+	if (!ok)
+		return false;
+
 	
 	if (CR.getOptionID("VolumeMaskId", id)) {
 		m_bUseVolumeMask = true;
@@ -148,13 +134,6 @@ bool CForwardProjectionAlgorithm::initialize(const Config& _cfg)
 		m_pSinogramMask = dynamic_cast<CFloat32ProjectionData2D*>(CData2DManager::getSingleton().get(id));
 	}
 
-
-	// ray or voxel-driven projector?
-	//m_bUseVoxelProjector = _cfg.self->getOptionBool("VoxelDriven", false);
-
-	// init data projector
-	_init();
-
 	// return success
 	m_bIsInitialized = _check();
 	return m_bIsInitialized;
@@ -163,34 +142,19 @@ bool CForwardProjectionAlgorithm::initialize(const Config& _cfg)
 //----------------------------------------------------------------------------------------
 // Initialize
 bool CForwardProjectionAlgorithm::initialize(CProjector2D* _pProjector, 
-											 CFloat32VolumeData2D* _pVolume,
-											 CFloat32ProjectionData2D* _pSinogram)
+                                             CFloat32VolumeData2D* _pVolume,
+                                             CFloat32ProjectionData2D* _pSinogram)
 {
+	assert(!m_bIsInitialized);
+
 	// store classes
 	m_pProjector = _pProjector;
 	m_pVolume = _pVolume;
 	m_pSinogram = _pSinogram;
 
-	// init data projector
-	_init();
-
 	// return success
 	m_bIsInitialized = _check();
 	return m_bIsInitialized;
-}
-
-//---------------------------------------------------------------------------------------
-// Initialize Data Projectors - private
-void CForwardProjectionAlgorithm::_init()
-{
-	// forward projection data projector
-	m_pForwardProjector = dispatchDataProjector(
-		m_pProjector, 
-		SinogramMaskPolicy(m_pSinogramMask),			// sinogram mask
-		ReconstructionMaskPolicy(m_pVolumeMask),		// reconstruction mask
-		DefaultFPPolicy(m_pVolume, m_pSinogram),		// forward projection
-		m_bUseSinogramMask, m_bUseVolumeMask, true		// options on/off
-	); 
 }
 
 //----------------------------------------------------------------------------------------
@@ -224,13 +188,21 @@ bool CForwardProjectionAlgorithm::run(int _iNrIterations)
 	// check initialized
 	ASTRA_ASSERT(m_bIsInitialized);
 
+	// forward projection data projector
+	CDataProjectorInterface	*pForwardProjector = dispatchDataProjector(
+		m_pProjector, 
+		SinogramMaskPolicy(m_pSinogramMask),			// sinogram mask
+		ReconstructionMaskPolicy(m_pVolumeMask),		// reconstruction mask
+		DefaultFPPolicy(m_pVolume, m_pSinogram),		// forward projection
+		m_bUseSinogramMask, m_bUseVolumeMask, true		// options on/off
+	); 
+
 	m_pSinogram->setData(0.0f);
 
-//	if (m_bUseVoxelProjector) {
-//		m_pForwardProjector->projectAllVoxels();
-//	} else {
-		m_pForwardProjector->project();
-//	}
+	pForwardProjector->project();
+
+	delete pForwardProjector;
+
 	return true;
 }
 //----------------------------------------------------------------------------------------

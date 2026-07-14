@@ -41,36 +41,26 @@ namespace astra
 //----------------------------------------------------------------------------------------
 // Default constructor
 CCudaProjector3D::CCudaProjector3D()
+	: m_projectionKernel(ker3d_default),
+	  m_iVoxelSuperSampling(1),
+	  m_iDetectorSuperSampling(1)
 {
-	_clear();
+
 }
 
-//----------------------------------------------------------------------------------------
-// Destructor
-CCudaProjector3D::~CCudaProjector3D()
+CCudaProjector3D::CCudaProjector3D(const CProjectionGeometry3D &_pProjectionGeometry,
+                                   const CVolumeGeometry3D &_pVolumeGeometry,
+                                   Cuda3DProjectionKernel _projectionKernel,
+                                   int _iVoxelSuperSampling,
+                                   int _iDetectorSuperSampling,
+                                   std::vector<int> _GPUIndices)
+	: CProjector3D(_pProjectionGeometry, _pVolumeGeometry),
+	  m_projectionKernel(_projectionKernel),
+	  m_iVoxelSuperSampling(_iVoxelSuperSampling),
+	  m_iDetectorSuperSampling(_iDetectorSuperSampling),
+	  m_GPUIndices(_GPUIndices)
 {
-	if (m_bIsInitialized) clear();
-}
 
-//----------------------------------------------------------------------------------------
-// Clear for constructors
-void CCudaProjector3D::_clear()
-{
-	m_pProjectionGeometry.reset();
-	m_pVolumeGeometry.reset();
-	m_bIsInitialized = false;
-
-	m_projectionKernel = ker3d_default;
-	m_iVoxelSuperSampling = 1;
-	m_iDetectorSuperSampling = 1;
-	m_iGPUIndex = -1;
-}
-
-//----------------------------------------------------------------------------------------
-// Clear
-void CCudaProjector3D::clear()
-{
-	m_bIsInitialized = false;
 }
 
 //----------------------------------------------------------------------------------------
@@ -92,12 +82,9 @@ bool CCudaProjector3D::_check()
 // Initialize, use a Config object
 bool CCudaProjector3D::initialize(const Config& _cfg)
 {
-	ConfigReader<CProjector3D> CR("CudaProjector3D", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CProjector3D> CR("CudaProjector3D", this, _cfg);
 
 	// initialization of parent class
 	if (!CProjector3D::initialize(_cfg)) {
@@ -124,10 +111,11 @@ bool CCudaProjector3D::initialize(const Config& _cfg)
 	ok &= CR.getOptionInt("VoxelSuperSampling", m_iVoxelSuperSampling, 1);
 	ok &= CR.getOptionInt("DetectorSuperSampling", m_iDetectorSuperSampling, 1);
 
-	if (CR.hasOption("GPUIndex"))
-		ok &= CR.getOptionInt("GPUIndex", m_iGPUIndex, -1);
-	else
-		ok &= CR.getOptionInt("GPUindex", m_iGPUIndex, -1);
+	if (CR.hasOption("GPUIndex")) {
+		ok &= CR.getOptionIntArray("GPUIndex", m_GPUIndices, true);
+	} else {
+		ok &= CR.getOptionIntArray("GPUindex", m_GPUIndices, true);
+	}
 	if (!ok)
 		return false;
 
@@ -135,14 +123,27 @@ bool CCudaProjector3D::initialize(const Config& _cfg)
 	return m_bIsInitialized;
 }
 
-/*
-bool CProjector3D::initialize(astra::CProjectionGeometry3D *, astra::CVolumeGeometry3D *)
+bool CCudaProjector3D::initialize(const CProjectionGeometry3D &_pProjectionGeometry,
+                                  const CVolumeGeometry3D &_pVolumeGeometry,
+                                  Cuda3DProjectionKernel _projectionKernel,
+                                  int _iVoxelSuperSampling,
+                                  int _iDetectorSuperSampling,
+                                  std::vector<int> _GPUIndices)
 {
-	ASTRA_ASSERT(false);
+	assert(!m_bIsInitialized);
 
-	return false;
+	m_pProjectionGeometry.reset(_pProjectionGeometry.clone());
+	m_pVolumeGeometry.reset(_pVolumeGeometry.clone());
+
+	m_projectionKernel = _projectionKernel;
+	m_iVoxelSuperSampling = _iVoxelSuperSampling;
+	m_iDetectorSuperSampling = _iDetectorSuperSampling;
+	m_GPUIndices = _GPUIndices;
+
+	m_bIsInitialized = _check();
+	return m_bIsInitialized;
 }
-*/
+
 
 std::string CCudaProjector3D::description() const
 {

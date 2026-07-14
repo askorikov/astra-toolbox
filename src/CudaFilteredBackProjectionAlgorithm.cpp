@@ -25,14 +25,16 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 -----------------------------------------------------------------------
 */
 
+#ifdef ASTRA_CUDA
+
 #include <astra/CudaFilteredBackProjectionAlgorithm.h>
 #include <astra/FanFlatProjectionGeometry2D.h>
 
 #include "astra/AstraObjectManager.h"
 #include "astra/CudaProjector2D.h"
 #include "astra/Filters.h"
-#include "astra/cuda/2d/astra.h"
 #include "astra/cuda/2d/fbp.h"
+#include "astra/cuda/2d/mem2d.h"
 
 #include "astra/Logging.h"
 
@@ -42,28 +44,25 @@ using namespace std;
 using namespace astra;
 
 CCudaFilteredBackProjectionAlgorithm::CCudaFilteredBackProjectionAlgorithm()
+	: m_filterConfig(), m_bShortScan(false), m_filter(nullptr)
 {
-	m_bIsInitialized = false;
-	CCudaReconstructionAlgorithm2D::_clear();
+
 }
 
 CCudaFilteredBackProjectionAlgorithm::~CCudaFilteredBackProjectionAlgorithm()
 {
+	if (m_filter)
+		astraCUDA::freeFilter(m_filter);
 
 }
 
 bool CCudaFilteredBackProjectionAlgorithm::initialize(const Config& _cfg)
 {
+	assert(!m_bIsInitialized);
+
 	ConfigReader<CAlgorithm> CR("CudaFilteredBackProjectionAlgorithm", this, _cfg);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized)
-	{
-		clear();
-	}
-
-	m_bIsInitialized = CCudaReconstructionAlgorithm2D::initialize(_cfg);
-	if (!m_bIsInitialized)
+	if (!CCudaReconstructionAlgorithm2D::initialize(_cfg))
 		return false;
 
 	m_filterConfig = getFilterConfigForAlgorithm(_cfg, this);
@@ -80,20 +79,17 @@ bool CCudaFilteredBackProjectionAlgorithm::initialize(const Config& _cfg)
 
 	initializeFromProjector();
 
+	if (m_iGPUIndex != -1)
+		astraCUDA::setGPUIndex(m_iGPUIndex);
+	m_filter = astraCUDA::prepareFilter(m_filterConfig, m_geometry.getDims());
 
-	m_pAlgo = new astraCUDA::FBP();
-	m_bAlgoInit = false;
-
-	return check();
+	m_bIsInitialized = check();
+	return m_bIsInitialized;
 }
 
 bool CCudaFilteredBackProjectionAlgorithm::initialize(CFloat32ProjectionData2D * _pSinogram, CFloat32VolumeData2D * _pReconstruction, E_FBPFILTER _eFilter, const float * _pfFilter /* = NULL */, int _iFilterWidth /* = 0 */, int _iGPUIndex /* = 0 */, float _fFilterParameter /* = -1.0f */)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized)
-	{
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pSinogram = _pSinogram;
@@ -103,12 +99,6 @@ bool CCudaFilteredBackProjectionAlgorithm::initialize(CFloat32ProjectionData2D *
 	m_filterConfig.m_eType = _eFilter;
 	m_filterConfig.m_iCustomFilterWidth = _iFilterWidth;
 	m_bShortScan = false;
-
-	// success
-	m_bIsInitialized = true;
-
-	m_pAlgo = new astraCUDA::FBP();
-	m_bAlgoInit = false;
 
 	if(_pfFilter != NULL)
 	{
@@ -133,35 +123,13 @@ bool CCudaFilteredBackProjectionAlgorithm::initialize(CFloat32ProjectionData2D *
 
 	m_filterConfig.m_fParameter = _fFilterParameter;
 
-	return check();
+	if (m_iGPUIndex != -1)
+		astraCUDA::setGPUIndex(m_iGPUIndex);
+	m_filter = astraCUDA::prepareFilter(m_filterConfig, m_geometry.getDims());
+
+	m_bIsInitialized = check();
+	return m_bIsInitialized;
 }
-
-
-void CCudaFilteredBackProjectionAlgorithm::initCUDAAlgorithm()
-{
-	CCudaReconstructionAlgorithm2D::initCUDAAlgorithm();
-
-	astraCUDA::FBP* pFBP = dynamic_cast<astraCUDA::FBP*>(m_pAlgo);
-
-	bool ok = pFBP->setFilter(m_filterConfig);
-	if (!ok) {
-		ASTRA_ERROR("CCudaFilteredBackProjectionAlgorithm: Failed to set filter");
-		ASTRA_ASSERT(ok);
-	}
-
-	ok &= pFBP->setShortScan(m_bShortScan);
-	if (!ok) {
-		ASTRA_ERROR("CCudaFilteredBackProjectionAlgorithm: Failed to set short-scan mode");
-	}
-
-	const CVolumeGeometry2D& volGeom = m_pReconstruction->getGeometry();
-	float fPixelArea = volGeom.getPixelArea();
-	ok &= pFBP->setReconstructionScale(1.0f/fPixelArea);
-	if (!ok) {
-		ASTRA_ERROR("CCudaFilteredBackProjectionAlgorithm: Failed to set reconstruction scale");
-	}
-}
-
 
 bool CCudaFilteredBackProjectionAlgorithm::check()
 {
@@ -183,7 +151,7 @@ bool CCudaFilteredBackProjectionAlgorithm::check()
 	// check gpu index
 	ASTRA_CONFIG_CHECK(m_iGPUIndex >= -1, "FBP_CUDA", "GPUIndex must be a non-negative integer or -1.");
 	// check pixel supersampling
-	ASTRA_CONFIG_CHECK(m_iPixelSuperSampling >= 0, "FBP_CUDA", "PixelSuperSampling must be a non-negative integer.");
+	ASTRA_CONFIG_CHECK(m_params.iRaysPerPixelDim >= 0, "FBP_CUDA", "PixelSuperSampling must be a non-negative integer.");
 
 	ASTRA_CONFIG_CHECK(checkCustomFilterSize(m_filterConfig, m_pSinogram->getGeometry()), "FBP_CUDA", "Filter size mismatch");
 
@@ -193,4 +161,69 @@ bool CCudaFilteredBackProjectionAlgorithm::check()
 	return true;
 }
 
+bool CCudaFilteredBackProjectionAlgorithm::run(int /*_iNrIterations*/)
+{
+	assert(m_bIsInitialized);
 
+	bool ok = true;
+
+	std::array<int, 2> volDims = m_pReconstruction->getShape();
+	std::array<int, 2> projDims = m_pSinogram->getShape();
+
+	if (m_iGPUIndex != -1)
+		astraCUDA::setGPUIndex(m_iGPUIndex);
+
+	CDataStorage *s;
+	s = astraCUDA::allocateGPUMemory(volDims[0], volDims[1], astraCUDA::INIT_NO);
+	if (!s) {
+		return false;
+	}
+	CData2D *D_volData = new CData2D(volDims[0], volDims[1], s);
+
+	s = astraCUDA::allocateGPUMemory(projDims[0], projDims[1], astraCUDA::INIT_NO);
+	if (!s) {
+		astraCUDA::freeGPUMemory(D_volData);
+		delete D_volData;
+		return false;
+	}
+	CData2D *D_projData = new CData2D(projDims[0], projDims[1], s);
+
+	if (m_pSinogram->isFloat32Memory()) {
+		ok &= astraCUDA::copyToGPUMemory(m_pSinogram, D_projData);
+	} else if (m_pSinogram->isFloat32GPU()) {
+		// TODO: re-use memory instead of copying
+		// (need to ensure everything works when pitches are not consistent)
+		ok &= astraCUDA::assignGPUMemory(D_projData, m_pSinogram);
+	} else {
+		ok = false;
+	}
+
+	astraCUDA::SProjectorParams2D params = m_params;
+	float fPixelArea = m_pReconstruction->getGeometry().getPixelArea();
+	params.fOutputScale *= 1.0f / fPixelArea;
+
+	if (ok)
+		ok &= FBP(D_volData, D_projData, m_geometry, params, m_filter, m_bShortScan);
+
+	if (ok) {
+		if (m_pReconstruction->isFloat32Memory()) {
+			ok &= astraCUDA::copyFromGPUMemory(m_pReconstruction, D_volData);
+		} else if (m_pReconstruction->isFloat32GPU()) {
+			// TODO: re-use memory instead of copying
+			// (need to ensure everything works when pitches are not consistent)
+			ok &= astraCUDA::assignGPUMemory(m_pReconstruction, D_volData);
+		} else {
+			ok = false;
+		}
+	}
+
+
+	astraCUDA::freeGPUMemory(D_volData);
+	astraCUDA::freeGPUMemory(D_projData);
+	delete D_volData;
+	delete D_projData;
+
+	return ok;
+}
+
+#endif // ASTRA_CUDA

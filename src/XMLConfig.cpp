@@ -87,7 +87,7 @@ bool XMLConfig::getInt(const std::string &name, int &iValue) const
 		return false;
 	try {
 		iValue = node.getContentInt();
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	return true;
@@ -100,7 +100,7 @@ bool XMLConfig::getFloat(const std::string &name, float &fValue) const
 		return false;
 	try {
 		fValue = node.getContentNumerical();
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	return true;
@@ -115,7 +115,7 @@ bool XMLConfig::getDoubleArray(const std::string &name, std::vector<double> &val
 		return false;
 	try {
 		values = node.getContentNumericalArrayDouble();
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	return true;
@@ -129,10 +129,11 @@ bool XMLConfig::getIntArray(const std::string &name, std::vector<int> &values) c
 	if (!node)
 		return false;
 	// TODO: Don't go via doubles
+	// (But ensure Matlab's default double values do still work)
 	std::vector<double> tmp;
 	try {
 		tmp = node.getContentNumericalArrayDouble();
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	values.resize(tmp.size());
@@ -159,7 +160,7 @@ bool XMLConfig::getOptionFloat(const std::string &name, float &fValue) const
 {
 	try {
 		fValue = self.getOptionNumerical(name);
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	return true;
@@ -169,7 +170,7 @@ bool XMLConfig::getOptionInt(const std::string &name, int &iValue) const
 {
 	try {
 		iValue = self.getOptionInt(name);
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	return true;
@@ -180,7 +181,7 @@ bool XMLConfig::getOptionUInt(const std::string &name, unsigned int &iValue) con
 	int tmp = 0;
 	try {
 		tmp = self.getOptionInt(name);
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	if (tmp < 0)
@@ -193,7 +194,7 @@ bool XMLConfig::getOptionBool(const std::string &name, bool &bValue) const
 {
 	try {
 		bValue = self.getOptionBool(name);
-	} catch (const StringUtil::bad_cast &e) {
+	} catch (const StringUtil::bad_cast &) {
 		return false;
 	}
 	return true;
@@ -205,25 +206,42 @@ bool XMLConfig::getOptionString(const std::string &name, std::string &sValue) co
 	return true;
 }
 
-bool XMLConfig::getOptionIntArray(const std::string &name, std::vector<int> &values) const
+bool XMLConfig::getOptionIntArray(const std::string &name, std::vector<int> &values, bool acceptScalar) const
 {
 	values.clear();
 
-	std::list<XMLNode> nodes = self.getNodes("Option");
-	for (XMLNode &it : nodes) {
-		if (it.getAttribute("key") == name) {
-			std::vector<std::string> data = it.getContentArray();
-			values.resize(data.size());
-			try {
-				for (size_t i = 0; i < data.size(); ++i)
-					values[i] = StringUtil::stringToInt(data[i]);
-			} catch (const StringUtil::bad_cast &e) {
-				return false;
+	// TODO: Don't go via floats
+	// (But ensure Matlab's default double values do still work)
+
+	if (acceptScalar) {
+		float x = -1;
+		try {
+			x = self.getOptionNumerical(name);
+			int t = static_cast<int>(x);
+			if (t == x) {
+				values.push_back(t);
+				return true;
 			}
-			return true;
+			// fall through to array parsing
+		} catch (const StringUtil::bad_cast &) {
+			// fall through to array parsing
 		}
 	}
-	return false;
+
+	std::vector<float32> tmp;
+	try {
+		tmp = self.getOptionNumericalArray(name);
+	} catch (const StringUtil::bad_cast &) {
+		return false;
+	}
+	values.resize(tmp.size());
+	for (size_t i = 0; i < tmp.size(); ++i) {
+		int t = static_cast<int>(tmp[i]);
+		if (t != tmp[i])
+			return false;
+		values[i] = t;
+	}
+	return true;
 }
 
 std::list<std::string> XMLConfig::checkUnparsed(const ConfigCheckData &data) const

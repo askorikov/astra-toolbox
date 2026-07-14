@@ -37,42 +37,18 @@ namespace astra {
 
 //----------------------------------------------------------------------------------------
 // Constructor
-CArtAlgorithm::CArtAlgorithm() 
- : CReconstructionAlgorithm2D()
+CArtAlgorithm::CArtAlgorithm()
+	: m_fLambda(1.0f),
+	  m_iCurrentRay(0)
 {
-	m_fLambda = 1.0f;
-	m_iCurrentRay = 0;
-	m_bIsInitialized = false;
+
 }
 
 //----------------------------------------------------------------------------------------
 // Destructor
-CArtAlgorithm::~CArtAlgorithm() 
+CArtAlgorithm::~CArtAlgorithm()
 {
 
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CArtAlgorithm::_clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	m_piDetectorOrder.clear();
-	m_piProjectionOrder.clear();
-	m_iCurrentRay = 0;
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CArtAlgorithm::clear()
-{
-	CReconstructionAlgorithm2D::clear();
-	m_piDetectorOrder.clear();
-	m_piProjectionOrder.clear();
-	m_fLambda = 1.0f;
-	m_iCurrentRay = 0;
-	m_bIsInitialized = false;
 }
 
 //---------------------------------------------------------------------------------------
@@ -84,6 +60,8 @@ bool CArtAlgorithm::_check()
 
 	ASTRA_CONFIG_CHECK(m_piProjectionOrder.size() == m_piDetectorOrder.size(), "ART", "Different sizes of ray order lists.");
 
+	ASTRA_CONFIG_CHECK(!m_piProjectionOrder.empty(), "ART", "Empty ray order lists.");
+
 	// check ray order list
 	for (unsigned int i = 0; i < m_piProjectionOrder.size(); i++) {
 		if (m_piProjectionOrder[i] < 0 || m_piProjectionOrder[i] > m_pSinogram->getAngleCount()-1) {
@@ -94,6 +72,12 @@ bool CArtAlgorithm::_check()
 		}
 	}
 
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "ART", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pReconstruction->isFloat32Memory(), "ART", "Reconstruction data object not a float32 host memory object");
+
+	ASTRA_CONFIG_CHECK(!m_bUseSinogramMask || m_pSinogramMask->isFloat32Memory(), "ART", "Projection mask object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(!m_bUseReconstructionMask || m_pReconstructionMask->isFloat32Memory(), "ART", "Reconstruction mask object not a float32 host memory object");
+
 	// success
 	return true;
 }
@@ -102,12 +86,9 @@ bool CArtAlgorithm::_check()
 // Initialize - Config
 bool CArtAlgorithm::initialize(const Config& _cfg)
 {
-	ConfigReader<CAlgorithm> CR("ArtAlgorithm", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CAlgorithm> CR("ArtAlgorithm", this, _cfg);
 	
 	// initialization of parent class
 	if (!CReconstructionAlgorithm2D::initialize(_cfg)) {
@@ -130,6 +111,8 @@ bool CArtAlgorithm::initialize(const Config& _cfg)
 		}
 	} else if (projOrder == "custom") {
 		std::vector<int> rayOrderList;
+		if (!CR.hasOption("RayOrderList"))
+			return false;
 		if (!CR.getOptionIntArray("RayOrderList", rayOrderList))
 			return false;
 		iRayCount = rayOrderList.size() / 2;
@@ -151,6 +134,8 @@ bool CArtAlgorithm::initialize(const Config& _cfg)
 		ok &= CR.getOptionNumerical("Relaxation", m_fLambda, 1.0f);
 	else
 		ok &= CR.getOptionNumerical("Lambda", m_fLambda, 1.0f);
+	if (!ok)
+		return false;
 
 	// success
 	m_bIsInitialized = _check();
@@ -159,14 +144,11 @@ bool CArtAlgorithm::initialize(const Config& _cfg)
 
 //----------------------------------------------------------------------------------------
 // Initialize - C++
-bool CArtAlgorithm::initialize(CProjector2D* _pProjector, 
-							   CFloat32ProjectionData2D* _pSinogram, 
-							   CFloat32VolumeData2D* _pReconstruction)
+bool CArtAlgorithm::initialize(CProjector2D* _pProjector,
+                               CFloat32ProjectionData2D* _pSinogram,
+                               CFloat32VolumeData2D* _pReconstruction)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pProjector = _pProjector;
@@ -234,7 +216,7 @@ bool CArtAlgorithm::run(int _iNrIterations)
 		iDetector = m_piDetectorOrder[m_iCurrentRay];
 		m_iCurrentRay = (m_iCurrentRay + 1) % m_piProjectionOrder.size();
 
-		if (m_bUseSinogramMask && m_pSinogramMask->getData2D()[iProjection][iDetector] == 0) continue;	
+		if (m_bUseSinogramMask && m_pSinogramMask->getFloat32Memory()[iProjection*m_pSinogramMask->getDetectorCount()+iDetector] == 0) continue;
 
 		m_pProjector->computeSingleRayWeights(iProjection, iDetector, pPixels, iPixelBufferSize, iUsedPixels);
 
@@ -242,40 +224,37 @@ bool CArtAlgorithm::run(int _iNrIterations)
 		fRayForwardProj = 0.0f;
 		fSumSquaredWeights = 0.0f;
 		for (iPixel = iUsedPixels-1; iPixel >= 0; --iPixel) {
-			if (m_bUseReconstructionMask && m_pReconstructionMask->getDataConst()[pPixels[iPixel].m_iIndex] == 0) continue;
+			if (m_bUseReconstructionMask && m_pReconstructionMask->getFloat32Memory()[pPixels[iPixel].m_iIndex] == 0) continue;
 
-			fRayForwardProj += pPixels[iPixel].m_fWeight * m_pReconstruction->getDataConst()[pPixels[iPixel].m_iIndex];
+			fRayForwardProj += pPixels[iPixel].m_fWeight * m_pReconstruction->getFloat32Memory()[pPixels[iPixel].m_iIndex];
 			fSumSquaredWeights += pPixels[iPixel].m_fWeight * pPixels[iPixel].m_fWeight;
 		}
 		if (fSumSquaredWeights == 0) continue;
 
 		// step2: difference
-		fProjectionDifference = m_pSinogram->getData2D()[iProjection][iDetector] - fRayForwardProj;
+		fProjectionDifference = m_pSinogram->getFloat32Memory()[iProjection*m_pSinogram->getDetectorCount()+iDetector] - fRayForwardProj;
 
 		// step3: back projection
 		fBackProjectionFactor = m_fLambda * fProjectionDifference / fSumSquaredWeights;
 		for (iPixel = iUsedPixels-1; iPixel >= 0; --iPixel) {
 			
 			// pixel must be loose
-			if (m_bUseReconstructionMask && m_pReconstructionMask->getDataConst()[pPixels[iPixel].m_iIndex] == 0) continue;
+			if (m_bUseReconstructionMask && m_pReconstructionMask->getFloat32Memory()[pPixels[iPixel].m_iIndex] == 0) continue;
 
 			// update
-			m_pReconstruction->getData()[pPixels[iPixel].m_iIndex] += fBackProjectionFactor * pPixels[iPixel].m_fWeight;
+			m_pReconstruction->getFloat32Memory()[pPixels[iPixel].m_iIndex] += fBackProjectionFactor * pPixels[iPixel].m_fWeight;
 			
 			// constraints
-			if (m_bUseMinConstraint && m_pReconstruction->getData()[pPixels[iPixel].m_iIndex] < m_fMinValue) {
-				m_pReconstruction->getData()[pPixels[iPixel].m_iIndex] = m_fMinValue;
+			if (m_bUseMinConstraint && m_pReconstruction->getFloat32Memory()[pPixels[iPixel].m_iIndex] < m_fMinValue) {
+				m_pReconstruction->getFloat32Memory()[pPixels[iPixel].m_iIndex] = m_fMinValue;
 			}
-			if (m_bUseMaxConstraint && m_pReconstruction->getData()[pPixels[iPixel].m_iIndex] > m_fMaxValue) {
-				m_pReconstruction->getData()[pPixels[iPixel].m_iIndex] = m_fMaxValue;
+			if (m_bUseMaxConstraint && m_pReconstruction->getFloat32Memory()[pPixels[iPixel].m_iIndex] > m_fMaxValue) {
+				m_pReconstruction->getFloat32Memory()[pPixels[iPixel].m_iIndex] = m_fMaxValue;
 			}
 		}
 
 	}
 	delete[] pPixels;
-
-	// update statistics
-	m_pReconstruction->updateStatistics();
 
 	return true;
 }

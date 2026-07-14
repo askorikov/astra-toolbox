@@ -35,8 +35,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/CompositeGeometryManager.h"
 #include "astra/VolumeGeometry3D.h"
 
-#include "astra/Float32ProjectionData2D.h"
-
 #include "astra/Logging.h"
 #include "astra/Filters.h"
 
@@ -47,28 +45,29 @@ namespace astra {
 
 //----------------------------------------------------------------------------------------
 // Constructor
-CCudaFDKAlgorithm3D::CCudaFDKAlgorithm3D() 
+CCudaFDKAlgorithm3D::CCudaFDKAlgorithm3D()
+	: m_iVoxelSuperSampling(1)
 {
-	m_bIsInitialized = false;
-	m_iGPUIndex = -1;
-	m_iVoxelSuperSampling = 1;
+
 }
 
 //----------------------------------------------------------------------------------------
 // Constructor with initialization
-CCudaFDKAlgorithm3D::CCudaFDKAlgorithm3D(CProjector3D* _pProjector, 
-								   CFloat32ProjectionData3D* _pProjectionData, 
-								   CFloat32VolumeData3D* _pReconstruction)
+CCudaFDKAlgorithm3D::CCudaFDKAlgorithm3D(CProjector3D* _pProjector,
+                                         CFloat32ProjectionData3D* _pProjectionData,
+                                         CFloat32VolumeData3D* _pReconstruction,
+                                         const SFilterConfig& _filterConfig,
+                                         bool _bShortScan)
+	: CCudaFDKAlgorithm3D()
 {
-	_clear();
-	initialize(_pProjector, _pProjectionData, _pReconstruction);
+	initialize(_pProjector, _pProjectionData, _pReconstruction, _filterConfig, _bShortScan);
 }
 
 //----------------------------------------------------------------------------------------
 // Destructor
 CCudaFDKAlgorithm3D::~CCudaFDKAlgorithm3D() 
 {
-	CReconstructionAlgorithm3D::_clear();
+
 }
 
 
@@ -91,6 +90,7 @@ bool CCudaFDKAlgorithm3D::_check()
 		cube = false;
 	ASTRA_CONFIG_CHECK(cube, "CUDA_FDK", "Voxels must be cubes for FDK");
 
+	ASTRA_CONFIG_CHECK(m_filterConfig.m_eType != FILTER_ERROR, "CUDA_FDK", "Invalid filter name");
 
 
 	return true;
@@ -100,7 +100,7 @@ bool CCudaFDKAlgorithm3D::_check()
 void CCudaFDKAlgorithm3D::initializeFromProjector()
 {
 	m_iVoxelSuperSampling = 1;
-	m_iGPUIndex = -1;
+	m_GPUIndices.clear();
 
 	CCudaProjector3D* pCudaProjector = dynamic_cast<CCudaProjector3D*>(m_pProjector);
 	if (!pCudaProjector) {
@@ -109,7 +109,7 @@ void CCudaFDKAlgorithm3D::initializeFromProjector()
 		}
 	} else {
 		m_iVoxelSuperSampling = pCudaProjector->getVoxelSuperSampling();
-		m_iGPUIndex = pCudaProjector->getGPUIndex();
+		m_GPUIndices = pCudaProjector->getGPUIndices();
 	}
 
 }
@@ -118,12 +118,9 @@ void CCudaFDKAlgorithm3D::initializeFromProjector()
 // Initialize - Config
 bool CCudaFDKAlgorithm3D::initialize(const Config& _cfg)
 {
-	ConfigReader<CAlgorithm> CR("CudaFDKAlgorithm3D", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CAlgorithm> CR("CudaFDKAlgorithm3D", this, _cfg);
 
 	// initialization of parent class
 	if (!CReconstructionAlgorithm3D::initialize(_cfg)) {
@@ -136,9 +133,9 @@ bool CCudaFDKAlgorithm3D::initialize(const Config& _cfg)
 	bool ok = true;
 	ok &= CR.getOptionInt("VoxelSuperSampling", m_iVoxelSuperSampling, m_iVoxelSuperSampling);
 	if (CR.hasOption("GPUIndex"))
-		ok &= CR.getOptionInt("GPUIndex", m_iGPUIndex, m_iGPUIndex);
-	else
-		ok &= CR.getOptionInt("GPUindex", m_iGPUIndex, m_iGPUIndex);
+		ok &= CR.getOptionIntArray("GPUIndex", m_GPUIndices, true);
+	else if (CR.hasOption("GPUindex"))
+		ok &= CR.getOptionIntArray("GPUindex", m_GPUIndices, true);
 	if (!ok)
 		return false;
 
@@ -160,19 +157,21 @@ bool CCudaFDKAlgorithm3D::initialize(const Config& _cfg)
 
 //----------------------------------------------------------------------------------------
 // Initialize - C++
-bool CCudaFDKAlgorithm3D::initialize(CProjector3D* _pProjector, 
-								  CFloat32ProjectionData3D* _pSinogram, 
-								  CFloat32VolumeData3D* _pReconstruction)
+bool CCudaFDKAlgorithm3D::initialize(CProjector3D* _pProjector,
+                                     CFloat32ProjectionData3D* _pSinogram,
+                                     CFloat32VolumeData3D* _pReconstruction,
+                                     const SFilterConfig& _filterConfig,
+                                     bool _bShortScan)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pProjector = _pProjector;
 	m_pSinogram = _pSinogram;
 	m_pReconstruction = _pReconstruction;
+
+	m_filterConfig = _filterConfig;
+	m_bShortScan = _bShortScan;
 
 	// success
 	m_bIsInitialized = _check();
@@ -191,17 +190,9 @@ bool CCudaFDKAlgorithm3D::run(int _iNrIterations)
 	CFloat32VolumeData3D* pReconMem = dynamic_cast<CFloat32VolumeData3D*>(m_pReconstruction);
 	ASTRA_ASSERT(pReconMem);
 
-#if 0
-	bool ok = true;
-	
-	ok = astraCudaFDK(pReconMem->getData(), pSinoMem->getDataConst(),
-	                  &volgeom, conegeom,
-	                  m_bShortScan, m_iGPUIndex, m_iVoxelSuperSampling, filter);
-
-	ASTRA_ASSERT(ok);
-#endif
-
 	CCompositeGeometryManager cgm;
+	if (!m_GPUIndices.empty())
+		cgm.setGPUIndices(m_GPUIndices);
 
 	return cgm.doFDK(m_pProjector, pReconMem, pSinoMem, m_bShortScan, m_filterConfig);
 }

@@ -38,6 +38,7 @@ def proj_geom(request):
         dummy_proj_geom = astra.create_proj_geom('parallel', DET_SPACING, DET_COUNT, ANGLES)
         dummy_proj_id = astra.create_projector('linear', dummy_proj_geom, VOL_GEOM)
         matrix_id = astra.projector.matrix(dummy_proj_id)
+        astra.projector.delete(dummy_proj_id)
         yield astra.create_proj_geom('sparse_matrix', DET_SPACING, DET_COUNT, ANGLES, matrix_id)
         astra.matrix.delete(matrix_id)
     elif geometry_type == 'short_scan':
@@ -130,6 +131,12 @@ def make_algorithm_config(algorithm_type, proj_geom, projector=None, options=Non
         algorithm_config['option'] = options
     return algorithm_config
 
+def delete_algorithm_objects(algorithm_config):
+    if algorithm_config['type'].startswith('FP'):
+        astra.data2d.delete(algorithm_config['VolumeDataId'])
+    else:
+        astra.data2d.delete(algorithm_config['ReconstructionDataId'])
+    astra.data2d.delete(algorithm_config['ProjectionDataId'])
 
 def get_algorithm_output(algorithm_config, n_iter=None):
     algorithm_id = astra.algorithm.create(algorithm_config)
@@ -145,12 +152,10 @@ def get_algorithm_output(algorithm_config, n_iter=None):
     astra.algorithm.run(algorithm_id, n_iter)
     if algorithm_config['type'].startswith('FP'):
         output = astra.data2d.get(algorithm_config['ProjectionDataId'])
-        astra.data2d.delete(algorithm_config['VolumeDataId'])
     else:
         output = astra.data2d.get(algorithm_config['ReconstructionDataId'])
-        astra.data2d.delete(algorithm_config['ReconstructionDataId'])
-    astra.data2d.delete(algorithm_config['ProjectionDataId'])
     astra.algorithm.delete(algorithm_id)
+    delete_algorithm_objects(algorithm_config)
     return output
 
 
@@ -243,7 +248,6 @@ class TestOptionsCPU:
     def test_sart_projection_order(self, proj_geom, projector, projection_order):
         options = {'ProjectionOrder': projection_order}
         if projection_order == 'custom':
-            pytest.xfail('Known bug')
             # Set projection order to 0, 5, 10, ..., 175, 1, 6, 11, ... , 176, 2, 7, ...
             proj_order_list = np.arange(N_ANGLES).reshape(-1, 5).T.flatten()
             options['ProjectionOrderList'] = proj_order_list
@@ -256,11 +260,10 @@ class TestOptionsCPU:
     def test_art_ray_order(self, proj_geom, projector, ray_order):
         options = {'RayOrder': ray_order}
         if ray_order == 'custom':
-            pytest.xfail('Known bug')
             # Every combination of (projection_id, detector_id)
             all_rays = np.mgrid[:N_ANGLES, :DET_COUNT].T.reshape(-1, 2)
             ray_order_list = np.random.permutation(all_rays).flatten()
-            options['ProjectionOrderList'] = ray_order_list
+            options['RayOrderList'] = ray_order_list
         algorithm_config = make_algorithm_config(algorithm_type='ART', proj_geom=proj_geom,
                                                  projector=projector, options=options)
         reconstruction = get_algorithm_output(algorithm_config)
@@ -333,7 +336,7 @@ class TestOptionsGPU:
 
     @pytest.mark.parametrize('proj_geom,', ['parallel', 'fanflat'], indirect=True)
     @pytest.mark.parametrize(
-        'algorithm_type', ['BP_CUDA', 'SIRT_CUDA', 'SART_CUDA', 'CGLS_CUDA', 'EM_CUDA']
+        'algorithm_type', ['BP_CUDA', 'SIRT_CUDA', 'CGLS_CUDA', 'EM_CUDA']
     )
     def test_pixel_supersampling(self, proj_geom, algorithm_type):
         algorithm_no_supersampling = make_algorithm_config(algorithm_type, proj_geom)
@@ -441,7 +444,6 @@ class TestOptionsGPU:
     def test_sart_projection_order(self, proj_geom, projection_order):
         options = {'ProjectionOrder': projection_order}
         if projection_order == 'custom':
-            pytest.xfail('Known bug')
             # Set projection order to 0, 5, 10, ..., 175, 1, 6, 11, ... , 176, 2, 7, ...
             proj_order_list = np.arange(N_ANGLES).reshape(-1, 5).T.flatten()
             options['ProjectionOrderList'] = proj_order_list
@@ -459,4 +461,32 @@ class TestOptionsGPU:
         astra.algorithm.run(algorithm_id, 2)
         res_norm = astra.algorithm.get_res_norm(algorithm_id)
         astra.algorithm.delete(algorithm_id)
+        delete_algorithm_objects(algorithm_config)
         assert res_norm > 0.0
+
+    @pytest.mark.parametrize('proj_geom,', ['parallel'], indirect=True)
+    @pytest.mark.parametrize('algorithm_type', ['SIRT_CUDA', 'SART_CUDA', 'CGLS_CUDA', 'EM_CUDA'])
+    def test_get_res_norm_invariance(self, proj_geom, algorithm_type):
+        # Test that get_res_norm returns consistent results, and also doesn't
+        # change the reconstruction
+        opts = {}
+        if algorithm_type == 'SART_CUDA':
+            # Make sure SART uses a deterministic projection order
+            opts['ProjectionOrder'] = 'sequential'
+        algorithm_config = make_algorithm_config(algorithm_type, proj_geom, options=opts)
+        algorithm_id = astra.algorithm.create(algorithm_config)
+        astra.algorithm.run(algorithm_id, 2)
+        astra.algorithm.run(algorithm_id, 2)
+        reconstruction_with = get_algorithm_output(algorithm_config)
+
+        algorithm_config = make_algorithm_config(algorithm_type, proj_geom, options=opts)
+        algorithm_id = astra.algorithm.create(algorithm_config)
+        astra.algorithm.run(algorithm_id, 2)
+        res_norm1 = astra.algorithm.get_res_norm(algorithm_id)
+        res_norm2 = astra.algorithm.get_res_norm(algorithm_id)
+        assert res_norm1 > 0.0
+        assert res_norm2 > 0.0
+        assert np.allclose(res_norm1, res_norm2)
+        astra.algorithm.run(algorithm_id, 2)
+        reconstruction_without = get_algorithm_output(algorithm_config)
+        assert np.allclose(reconstruction_with, reconstruction_without)

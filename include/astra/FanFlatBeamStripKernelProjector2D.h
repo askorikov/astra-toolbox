@@ -29,7 +29,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #define _INC_ASTRA_FANFLATBEAMSTRIPKERNELPROJECTOR
 
 #include "FanFlatProjectionGeometry2D.h"
-#include "Float32Data2D.h"
+#include "Data2D.h"
 #include "Projector2D.h"
 
 namespace astra
@@ -53,11 +53,6 @@ namespace astra
 class _AstraExport CFanFlatBeamStripKernelProjector2D : public CProjector2D {
 
 protected:
-	
-	/** Initial clearing. Only to be used by constructors.
-	 */
-	virtual void _clear();
-
 	/** Check the values of this object.  If everything is ok, the object can be set to the initialized state.
 	 * The following statements are then guaranteed to hold:
 	 * - no NULL pointers
@@ -102,10 +97,6 @@ public:
 	 */
 	bool initialize(const CFanFlatProjectionGeometry2D &_pProjectionGeometry,
 	                const CVolumeGeometry2D &_pReconstructionGeometry);
-
-	/** Clear this class.
-	 */
-	virtual void clear();
 
 	/** Returns the number of weights required for storage of all weights of one projection.
 	 *

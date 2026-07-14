@@ -42,16 +42,16 @@ namespace astra {
 // Constructor
 CBackProjectionAlgorithm::CBackProjectionAlgorithm() 
 {
-	_clear();
+
 }
 
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 CBackProjectionAlgorithm::CBackProjectionAlgorithm(CProjector2D* _pProjector, 
-							   CFloat32ProjectionData2D* _pSinogram, 
-							   CFloat32VolumeData2D* _pReconstruction)
+                                                   CFloat32ProjectionData2D* _pSinogram,
+                                                   CFloat32VolumeData2D* _pReconstruction)
+	: CBackProjectionAlgorithm()
 {
-	_clear();
 	initialize(_pProjector, _pSinogram, _pReconstruction);
 }
 
@@ -59,23 +59,7 @@ CBackProjectionAlgorithm::CBackProjectionAlgorithm(CProjector2D* _pProjector,
 // Destructor
 CBackProjectionAlgorithm::~CBackProjectionAlgorithm() 
 {
-	clear();
-}
 
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CBackProjectionAlgorithm::_clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CBackProjectionAlgorithm::clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	m_bIsInitialized = false;
 }
 
 //----------------------------------------------------------------------------------------
@@ -85,6 +69,12 @@ bool CBackProjectionAlgorithm::_check()
 	// check base class
 	ASTRA_CONFIG_CHECK(CReconstructionAlgorithm2D::_check(), "BP", "Error in ReconstructionAlgorithm2D initialization");
 
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "BP", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pReconstruction->isFloat32Memory(), "BP", "Reconstruction data object not a float32 host memory object");
+
+	ASTRA_CONFIG_CHECK(!m_bUseSinogramMask || m_pSinogramMask->isFloat32Memory(), "BP", "Projection mask object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(!m_bUseReconstructionMask || m_pReconstructionMask->isFloat32Memory(), "BP", "Reconstruction mask object not a float32 host memory object");
+
 	return true;
 }
 
@@ -92,20 +82,14 @@ bool CBackProjectionAlgorithm::_check()
 // Initialize - Config
 bool CBackProjectionAlgorithm::initialize(const Config& _cfg)
 {
-	ConfigReader<CAlgorithm> CR("BackProjectionAlgorithm", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CAlgorithm> CR("BackProjectionAlgorithm", this, _cfg);
 
 	// initialization of parent class
 	if (!CReconstructionAlgorithm2D::initialize(_cfg)) {
 		return false;
 	}
-
-	// init data objects and data projectors
-	_init();
 
 	// success
 	m_bIsInitialized = _check();
@@ -115,32 +99,19 @@ bool CBackProjectionAlgorithm::initialize(const Config& _cfg)
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 bool CBackProjectionAlgorithm::initialize(CProjector2D* _pProjector, 
-								CFloat32ProjectionData2D* _pSinogram, 
-								CFloat32VolumeData2D* _pReconstruction)
+                                          CFloat32ProjectionData2D* _pSinogram,
+                                          CFloat32VolumeData2D* _pReconstruction)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pProjector = _pProjector;
 	m_pSinogram = _pSinogram;
 	m_pReconstruction = _pReconstruction;
 
-	// init data objects and data projectors
-	_init();
-
 	// success
 	m_bIsInitialized = _check();
 	return m_bIsInitialized;
-}
-
-//---------------------------------------------------------------------------------------
-// Initialize Data Projectors - private
-void CBackProjectionAlgorithm::_init()
-{
-
 }
 
 //----------------------------------------------------------------------------------------

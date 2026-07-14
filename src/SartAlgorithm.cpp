@@ -38,67 +38,36 @@ namespace astra {
 
 #include "astra/Projector2DImpl.inl"
 
-
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CSartAlgorithm::_clear()
-{
-	CReconstructionAlgorithm2D::_clear();
-	m_piProjectionOrder.clear();
-	m_pTotalRayLength = NULL;
-	m_pTotalPixelWeight = NULL;
-
-	m_bIsInitialized = false;
-	m_iIterationCount = 0;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CSartAlgorithm::clear()
-{
-	CReconstructionAlgorithm2D::clear();
-
-	m_piProjectionOrder.clear();
-
-	delete m_pTotalRayLength;
-	m_pTotalRayLength = NULL;
-
-	delete m_pTotalPixelWeight;
-	m_pTotalPixelWeight = NULL;
-
-	delete m_pDiffSinogram;
-	m_pDiffSinogram = NULL;
-
-	m_bIsInitialized = false;
-	m_iIterationCount = 0;
-}
-
 //----------------------------------------------------------------------------------------
 // Constructor
 CSartAlgorithm::CSartAlgorithm() 
+	: m_pTotalRayLength(nullptr),
+	  m_pTotalPixelWeight(nullptr),
+	  m_pDiffSinogram(nullptr),
+	  m_iIterationCount(0)
 {
-	_clear();
+
 }
 
 //----------------------------------------------------------------------------------------
 // Constructor
 CSartAlgorithm::CSartAlgorithm(CProjector2D* _pProjector, 
-							   CFloat32ProjectionData2D* _pSinogram, 
-							   CFloat32VolumeData2D* _pReconstruction) 
+                               CFloat32ProjectionData2D* _pSinogram, 
+                               CFloat32VolumeData2D* _pReconstruction) 
+	: CSartAlgorithm()
 {
-	_clear();
 	initialize(_pProjector, _pSinogram, _pReconstruction);
 }
 
 //----------------------------------------------------------------------------------------
 // Constructor
 CSartAlgorithm::CSartAlgorithm(CProjector2D* _pProjector, 
-							   CFloat32ProjectionData2D* _pSinogram, 
-							   CFloat32VolumeData2D* _pReconstruction,
-							   int* _piProjectionOrder, 
-							   int _iProjectionCount)
+                               CFloat32ProjectionData2D* _pSinogram, 
+                               CFloat32VolumeData2D* _pReconstruction,
+                               int* _piProjectionOrder, 
+                               int _iProjectionCount)
+	: CSartAlgorithm()
 {
-	_clear();
 	initialize(_pProjector, _pSinogram, _pReconstruction, _piProjectionOrder, _iProjectionCount);
 }
 
@@ -106,19 +75,18 @@ CSartAlgorithm::CSartAlgorithm(CProjector2D* _pProjector,
 // Destructor
 CSartAlgorithm::~CSartAlgorithm() 
 {
-	clear();
+	delete m_pTotalRayLength;
+	delete m_pTotalPixelWeight;
+	delete m_pDiffSinogram;
 }
 
 //---------------------------------------------------------------------------------------
 // Initialize - Config
 bool CSartAlgorithm::initialize(const Config& _cfg)
 {
+	assert(!m_bIsInitialized);
+
 	ConfigReader<CAlgorithm> CR("SartAlgorithm", this, _cfg);
-	
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
 
 	// initialization of parent class
 	if (!CReconstructionAlgorithm2D::initialize(_cfg)) {
@@ -158,9 +126,9 @@ bool CSartAlgorithm::initialize(const Config& _cfg)
 		return false;
 
 	// create data objects
-	m_pTotalRayLength = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
-	m_pTotalPixelWeight = new CFloat32VolumeData2D(m_pProjector->getVolumeGeometry());
-	m_pDiffSinogram = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
+	m_pTotalRayLength = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
+	m_pTotalPixelWeight = createCFloat32VolumeData2DMemory(m_pProjector->getVolumeGeometry());
+	m_pDiffSinogram = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
 
 	// success
 	m_bIsInitialized = _check();
@@ -170,13 +138,10 @@ bool CSartAlgorithm::initialize(const Config& _cfg)
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 bool CSartAlgorithm::initialize(CProjector2D* _pProjector, 
-								CFloat32ProjectionData2D* _pSinogram, 
-								CFloat32VolumeData2D* _pReconstruction)
+                                CFloat32ProjectionData2D* _pSinogram, 
+                                CFloat32VolumeData2D* _pReconstruction)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// required classes
 	m_pProjector = _pProjector;
@@ -191,9 +156,9 @@ bool CSartAlgorithm::initialize(CProjector2D* _pProjector,
 	}
 
 	// create data objects
-	m_pTotalRayLength = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
-	m_pTotalPixelWeight = new CFloat32VolumeData2D(m_pProjector->getVolumeGeometry());
-	m_pDiffSinogram = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
+	m_pTotalRayLength = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
+	m_pTotalPixelWeight = createCFloat32VolumeData2DMemory(m_pProjector->getVolumeGeometry());
+	m_pDiffSinogram = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
 
 	// success
 	m_bIsInitialized = _check();
@@ -202,12 +167,14 @@ bool CSartAlgorithm::initialize(CProjector2D* _pProjector,
 
 //---------------------------------------------------------------------------------------
 // Initialize - C++
-bool CSartAlgorithm::initialize(CProjector2D* _pProjector, 
-								CFloat32ProjectionData2D* _pSinogram, 
-								CFloat32VolumeData2D* _pReconstruction,
-								int* _piProjectionOrder, 
-								int _iProjectionCount)
+bool CSartAlgorithm::initialize(CProjector2D* _pProjector,
+                                CFloat32ProjectionData2D* _pSinogram,
+                                CFloat32VolumeData2D* _pReconstruction,
+                                int* _piProjectionOrder,
+                                int _iProjectionCount)
 {
+	assert(!m_bIsInitialized);
+
 	// required classes
 	m_pProjector = _pProjector;
 	m_pSinogram = _pSinogram;
@@ -220,9 +187,9 @@ bool CSartAlgorithm::initialize(CProjector2D* _pProjector,
 	}
 
 	// create data objects
-	m_pTotalRayLength = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
-	m_pTotalPixelWeight = new CFloat32VolumeData2D(m_pProjector->getVolumeGeometry());
-	m_pDiffSinogram = new CFloat32ProjectionData2D(m_pProjector->getProjectionGeometry());
+	m_pTotalRayLength = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
+	m_pTotalPixelWeight = createCFloat32VolumeData2DMemory(m_pProjector->getVolumeGeometry());
+	m_pDiffSinogram = createCFloat32ProjectionData2DMemory(m_pProjector->getProjectionGeometry());
 
 	// success
 	m_bIsInitialized = _check();
@@ -239,6 +206,12 @@ bool CSartAlgorithm::_check()
 	for (unsigned int i = 0; i < m_piProjectionOrder.size(); ++i) {
 		ASTRA_CONFIG_CHECK(0 <= m_piProjectionOrder[i] && m_piProjectionOrder[i] < m_pProjector->getProjectionGeometry().getProjectionAngleCount(), "SART", "Projection Order out of range.");
 	}
+
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "SART", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pReconstruction->isFloat32Memory(), "SART", "Reconstruction data object not a float32 host memory object");
+
+	ASTRA_CONFIG_CHECK(!m_bUseSinogramMask || m_pSinogramMask->isFloat32Memory(), "SART", "Projection mask object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(!m_bUseReconstructionMask || m_pReconstructionMask->isFloat32Memory(), "SART", "Reconstruction mask object not a float32 host memory object");
 
 	return true;
 }

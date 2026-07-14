@@ -60,13 +60,6 @@ CCylConeVecProjectionGeometry3D::CCylConeVecProjectionGeometry3D(int _iProjectio
 	           std::move(_pProjectionAngles));
 }
 
-//----------------------------------------------------------------------------------------
-// Destructor.
-CCylConeVecProjectionGeometry3D::~CCylConeVecProjectionGeometry3D()
-{
-
-}
-
 //---------------------------------------------------------------------------------------
 // Initialize - Config
 bool CCylConeVecProjectionGeometry3D::initialize(const Config& _cfg)
@@ -141,16 +134,7 @@ bool CCylConeVecProjectionGeometry3D::initialize(int _iProjectionAngleCount,
 // Clone
 CProjectionGeometry3D* CCylConeVecProjectionGeometry3D::clone() const
 {
-	CCylConeVecProjectionGeometry3D* res = new CCylConeVecProjectionGeometry3D();
-	res->m_bInitialized				= m_bInitialized;
-	res->m_iProjectionAngleCount	= m_iProjectionAngleCount;
-	res->m_iDetectorRowCount		= m_iDetectorRowCount;
-	res->m_iDetectorColCount		= m_iDetectorColCount;
-	res->m_iDetectorTotCount		= m_iDetectorTotCount;
-	res->m_fDetectorSpacingX		= m_fDetectorSpacingX;
-	res->m_fDetectorSpacingY		= m_fDetectorSpacingY;
-	res->m_ProjectionAngles		= m_ProjectionAngles;
-	return res;
+	return new CCylConeVecProjectionGeometry3D(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -170,7 +154,6 @@ bool CCylConeVecProjectionGeometry3D::isEqual(const CProjectionGeometry3D * _pGe
 	if (m_iProjectionAngleCount != pGeom2->m_iProjectionAngleCount) return false;
 	if (m_iDetectorRowCount != pGeom2->m_iDetectorRowCount) return false;
 	if (m_iDetectorColCount != pGeom2->m_iDetectorColCount) return false;
-	if (m_iDetectorTotCount != pGeom2->m_iDetectorTotCount) return false;
 	//if (m_fDetectorSpacingX != pGeom2->m_fDetectorSpacingX) return false;
 	//if (m_fDetectorSpacingY != pGeom2->m_fDetectorSpacingY) return false;
 	
@@ -179,13 +162,6 @@ bool CCylConeVecProjectionGeometry3D::isEqual(const CProjectionGeometry3D * _pGe
 	}
 
 	return true;
-}
-
-//----------------------------------------------------------------------------------------
-// is of type
-bool CCylConeVecProjectionGeometry3D::isOfType(const std::string& _sType) const
-{
-	 return (_sType == "cyl_cone_vec");
 }
 
 //----------------------------------------------------------------------------------------
@@ -282,7 +258,7 @@ void CCylConeVecProjectionGeometry3D::getProjectedBBoxSingleAngle(int iAngle,
 	double vmin = 1e20;
 	double vmax = -1e20;
 
-	double near_plane, far_plane;
+	double near_plane = 0.0, far_plane = 0.0;
 
 	for (int j = 8; j >= 0; --j) {
 		if (vol_u[j] < umin)

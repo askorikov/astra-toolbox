@@ -79,10 +79,14 @@ public:
 	 * @param _pProjector		Projector Object.
 	 * @param _pProjectionData	ProjectionData3D object containing the projection data.
 	 * @param _pReconstruction	VolumeData3D object for storing the reconstructed volume.
+	 * @param _filterConfig		Filter configuration
+	 * @param _bShortScan		Short scan mode
 	 */
-	CCudaFDKAlgorithm3D(CProjector3D* _pProjector, 
-	                    CFloat32ProjectionData3D* _pProjectionData, 
-	                    CFloat32VolumeData3D* _pReconstruction);
+	CCudaFDKAlgorithm3D(CProjector3D* _pProjector,
+	                    CFloat32ProjectionData3D* _pProjectionData,
+	                    CFloat32VolumeData3D* _pReconstruction,
+	                    const SFilterConfig& _filterConfig,
+	                    bool _bShortScan);
 	
 	/** Copy constructor.
 	 */
@@ -91,10 +95,6 @@ public:
 	/** Destructor.
 	 */
 	virtual ~CCudaFDKAlgorithm3D();
-
-	/** Clear this class.
-	 */
-/*	virtual void clear();*/
 
 	/** Initialize the algorithm with a config object.
 	 *
@@ -108,11 +108,15 @@ public:
 	 * @param _pProjector		Projector Object.
 	 * @param _pProjectionData	ProjectionData3D object containing the projection data.
 	 * @param _pReconstruction	VolumeData3D object for storing the reconstructed volume.
+	 * @param _filterConfig		Filter configuration
+	 * @param _bShortScan		Short scan mode
 	 * @return initialization successful?
 	 */
-	bool initialize(CProjector3D* _pProjector, 
-					CFloat32ProjectionData3D* _pSinogram, 
-					CFloat32VolumeData3D* _pReconstruction);
+	bool initialize(CProjector3D* _pProjector,
+	                CFloat32ProjectionData3D* _pSinogram,
+	                CFloat32VolumeData3D* _pReconstruction,
+	                const SFilterConfig& _filterConfig,
+	                bool _bShortScan);
 
 	/** Perform a number of iterations.
 	 *
@@ -126,16 +130,15 @@ public:
 	 */
 	virtual std::string description() const;
 
-	/**  
-	 * Sets the index of the used GPU index: first GPU has index 0
+	/** Sets the index/indices of the used GPU(s): first GPU has index 0
 	 *
-	 * @param _iGPUIndex New GPU index.
+	 * @param _GPUIndices New GPU index/indices.
 	 */
-	void setGPUIndex(int _iGPUIndex) { m_iGPUIndex = _iGPUIndex; }
+	void setGPUIndices(const std::vector<int> &_GPUIndices) { m_GPUIndices = _GPUIndices; }
 
 protected:
 
-	int m_iGPUIndex;
+	std::vector<int> m_GPUIndices;
 	int m_iVoxelSuperSampling;
 	bool m_bShortScan;
 

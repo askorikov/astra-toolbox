@@ -5,11 +5,12 @@ set -e
 D=`mktemp -d`
 cp build.sh $D
 
-V=2.4.1
+V=2.5.0
 B=0
 
-podman run --rm -v $D:/out:z astra-build-deb11 /bin/bash /out/build.sh $V $B deb11 full
-podman run --rm -v $D:/out:z astra-build-deb12 /bin/bash /out/build.sh $V $B deb12 full
+podman run --rm -v $D:/out:z astra-build-cuda11 /bin/bash /out/build.sh $V $B cuda11 full
+podman run --rm -v $D:/out:z astra-build-cuda12 /bin/bash /out/build.sh $V $B cuda12
+podman run --rm -v $D:/out:z astra-build-cuda13 /bin/bash /out/build.sh $V $B cuda13 full
 
 rm -f $D/build.sh
 

@@ -11,6 +11,7 @@ set(ASTRA_SOURCES
     ConeVecProjectionGeometry3D.cpp
     CylConeVecProjectionGeometry3D.cpp
     Config.cpp
+    Data2D.cpp
     Data3D.cpp
     DataProjector.cpp
     DataProjectorPolicies.cpp
@@ -21,10 +22,6 @@ set(ASTRA_SOURCES
     Features.cpp
     FilteredBackProjectionAlgorithm.cpp
     Filters.cpp
-    Float32Data.cpp
-    Float32Data2D.cpp
-    Float32ProjectionData2D.cpp
-    Float32VolumeData2D.cpp
     ForwardProjectionAlgorithm.cpp
     Fourier.cpp
     GeometryUtil2D.cpp
@@ -40,7 +37,6 @@ set(ASTRA_SOURCES
     ParallelProjectionGeometry3D.cpp
     ParallelVecProjectionGeometry2D.cpp
     ParallelVecProjectionGeometry3D.cpp
-    PlatformDepSystemCode.cpp
     PluginAlgorithmFactory.cpp
     ProjectionGeometry2D.cpp
     ProjectionGeometry2DFactory.cpp
@@ -57,6 +53,7 @@ set(ASTRA_SOURCES
     SparseMatrixProjectionGeometry2D.cpp
     SparseMatrixProjector2D.cpp
     Utilities.cpp
+    Vector3D.cpp
     VolumeGeometry2D.cpp
     VolumeGeometry3D.cpp
     XMLConfig.cpp
@@ -118,24 +115,19 @@ if(ASTRA_USE_CUDA)
       CudaSirtAlgorithm3D.cpp
       CudaBackProjectionAlgorithm3D.cpp
       CudaForwardProjectionAlgorithm3D.cpp
-      "${CMAKE_SOURCE_DIR}/cuda/2d/algo.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/par_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/par_bp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/fan_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/fan_bp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/fbp.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/2d/sirt.cu"
+      "${CMAKE_SOURCE_DIR}/cuda/2d/mem2d.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/sart.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/2d/cgls.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/2d/em.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/astra.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/util.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/arith.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/fft.cu"
       "${CMAKE_SOURCE_DIR}/cuda/2d/darthelper.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/darthelper3d.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/3d/algo3d.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/3d/cgls3d.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/cone_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/cone_bp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/cone_cyl.cu"
@@ -143,11 +135,12 @@ if(ASTRA_USE_CUDA)
       "${CMAKE_SOURCE_DIR}/cuda/3d/fdk.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/par3d_fp.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/par3d_bp.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/3d/sirt3d.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/astra3d.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/util3d.cu"
       "${CMAKE_SOURCE_DIR}/cuda/3d/arith3d.cu"
-      "${CMAKE_SOURCE_DIR}/cuda/3d/mem3d.cu")
+      "${CMAKE_SOURCE_DIR}/cuda/3d/mem3d.cu"
+      "${CMAKE_SOURCE_DIR}/cuda/dlpack_support.cu"
+      "${CMAKE_SOURCE_DIR}/cuda/stream.cu")
 
   set(ASTRA_CUDA_INCLUDES ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 

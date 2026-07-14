@@ -33,10 +33,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "Globals.h"
 
 #include "Projector2D.h"
-#include "Float32ProjectionData2D.h"
-#include "Float32VolumeData2D.h"
-
-#include "DataProjector.h"
+#include "Data2D.h"
 
 namespace astra {
 
@@ -67,15 +64,6 @@ namespace astra {
 class _AstraExport CForwardProjectionAlgorithm : public CAlgorithm {
 
 protected:
-
-	/** Init stuff
-	 */
-	virtual void _init();
-
-	/** Initial clearing. Only to be used by constructors.
-	 */
-	virtual void _clear();
-
 	/** Check the values of this object.  If everything is ok, the object can be set to the initialized state.
 	 * The following statements are then guaranteed to hold:
 	 * - valid projector
@@ -89,12 +77,6 @@ protected:
 	CFloat32ProjectionData2D* m_pSinogram;
 	//< VolumeData2D object containing the phantom.
 	CFloat32VolumeData2D* m_pVolume;
-
-	// data projector
-	astra::CDataProjectorInterface* m_pForwardProjector;
-
-	// ray or voxel-driven projector code?
-	bool m_bUseVoxelProjector;
 
 	//< Dataobject containing fixed volume mask (0 = don't project)
 	CFloat32VolumeData2D* m_pVolumeMask;
@@ -128,10 +110,6 @@ public:
 	/** Destructor.
 	 */
 	virtual ~CForwardProjectionAlgorithm();
-
-	/** Clear this class.
-	 */
-	virtual void clear();
 
 	/** Initialize class.
 	 *

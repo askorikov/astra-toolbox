@@ -31,7 +31,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 #include "astra/cuda/2d/astra.h"
 #include "astra/cuda/2d/darthelper.h"
-#include "astra/cuda/2d/algo.h"
 
 #include "astra/AstraObjectManager.h"
 
@@ -109,7 +108,7 @@ bool CCudaRoiSelectAlgorithm::run(int _iNrIterations)
 	}
 
 	astraCUDA::setGPUIndex(m_iGPUIndex);
-	astraCUDA::roiSelect(m_pData->getData(), m_fRadius, width, height);
+	astraCUDA::roiSelect(m_pData->getFloat32Memory(), m_fRadius, width, height);
 
 	return true;
 }

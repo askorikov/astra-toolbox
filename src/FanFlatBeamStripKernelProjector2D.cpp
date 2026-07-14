@@ -43,16 +43,15 @@ using namespace astra;
 // default constructor
 CFanFlatBeamStripKernelProjector2D::CFanFlatBeamStripKernelProjector2D()
 {
-	_clear();
+
 }
 
 //----------------------------------------------------------------------------------------
 // constructor
 CFanFlatBeamStripKernelProjector2D::CFanFlatBeamStripKernelProjector2D(const CFanFlatProjectionGeometry2D &_pProjectionGeometry,
-																	   const CVolumeGeometry2D &_pReconstructionGeometry)
-
+                                                                       const CVolumeGeometry2D &_pReconstructionGeometry)
+	: CFanFlatBeamStripKernelProjector2D()
 {
-	_clear();
 	initialize(_pProjectionGeometry, _pReconstructionGeometry);
 }
 
@@ -60,23 +59,7 @@ CFanFlatBeamStripKernelProjector2D::CFanFlatBeamStripKernelProjector2D(const CFa
 // destructor
 CFanFlatBeamStripKernelProjector2D::~CFanFlatBeamStripKernelProjector2D()
 {
-	clear();
-}
 
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CFanFlatBeamStripKernelProjector2D::_clear()
-{
-	CProjector2D::_clear();
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CFanFlatBeamStripKernelProjector2D::clear()
-{
-	CProjector2D::clear();
-	m_bIsInitialized = false;
 }
 
 //---------------------------------------------------------------------------------------
@@ -86,7 +69,7 @@ bool CFanFlatBeamStripKernelProjector2D::_check()
 	// check base class
 	ASTRA_CONFIG_CHECK(CProjector2D::_check(), "FanFlatBeamStripKernelProjector2D", "Error in Projector2D initialization");
 
-	ASTRA_CONFIG_CHECK(dynamic_cast<CFanFlatProjectionGeometry2D*>(m_pProjectionGeometry), "FanFlatBeamLineKernelProjector2D", "Unsupported projection geometry");
+	ASTRA_CONFIG_CHECK(dynamic_cast<CFanFlatProjectionGeometry2D*>(m_pProjectionGeometry.get()), "FanFlatBeamLineKernelProjector2D", "Unsupported projection geometry");
 
 	ASTRA_CONFIG_CHECK(abs(m_pVolumeGeometry->getPixelLengthX() / m_pVolumeGeometry->getPixelLengthY()) - 1 < eps, "FanFlatBeamStripKernelProjector2D", "Pixel height must equal pixel width.");
 	
@@ -98,10 +81,7 @@ bool CFanFlatBeamStripKernelProjector2D::_check()
 // Initialize, use a Config object
 bool CFanFlatBeamStripKernelProjector2D::initialize(const Config& _cfg)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// initialization of parent class
 	if (!CProjector2D::initialize(_cfg)) {
@@ -116,16 +96,13 @@ bool CFanFlatBeamStripKernelProjector2D::initialize(const Config& _cfg)
 //---------------------------------------------------------------------------------------
 // Initialize
 bool CFanFlatBeamStripKernelProjector2D::initialize(const CFanFlatProjectionGeometry2D &_pProjectionGeometry,
-													 const CVolumeGeometry2D &_pVolumeGeometry)
+                                                    const CVolumeGeometry2D &_pVolumeGeometry)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// hardcopy geometries
-	m_pProjectionGeometry = _pProjectionGeometry.clone();
-	m_pVolumeGeometry = _pVolumeGeometry.clone();
+	m_pProjectionGeometry.reset(_pProjectionGeometry.clone());
+	m_pVolumeGeometry.reset(_pVolumeGeometry.clone());
 
 	// success
 	m_bIsInitialized = _check();

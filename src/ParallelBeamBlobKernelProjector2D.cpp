@@ -42,20 +42,23 @@ using namespace astra;
 //----------------------------------------------------------------------------------------
 // default constructor
 CParallelBeamBlobKernelProjector2D::CParallelBeamBlobKernelProjector2D()
+	: m_fBlobSize(0.0f),
+	  m_fBlobSampleRate(0.0f),
+	  m_iBlobSampleCount(0)
 {
-	_clear();
+
 }
 
 //----------------------------------------------------------------------------------------
 // constructor
 CParallelBeamBlobKernelProjector2D::CParallelBeamBlobKernelProjector2D(const CParallelProjectionGeometry2D &_pProjectionGeometry,
-																	   const CVolumeGeometry2D &_pReconstructionGeometry,
-																	   float32 _fBlobSize,
-																	   float32 _fBlobSampleRate,
-																	   int _iBlobSampleCount,
-																	   float32* _pfBlobValues)
+                                                                       const CVolumeGeometry2D &_pReconstructionGeometry,
+                                                                       float32 _fBlobSize,
+                                                                       float32 _fBlobSampleRate,
+                                                                       int _iBlobSampleCount,
+                                                                       float32* _pfBlobValues)
+	: CParallelBeamBlobKernelProjector2D()
 {
-	_clear();
 	initialize(_pProjectionGeometry, _pReconstructionGeometry, _fBlobSize, _fBlobSampleRate, _iBlobSampleCount, _pfBlobValues);
 }
 
@@ -63,31 +66,7 @@ CParallelBeamBlobKernelProjector2D::CParallelBeamBlobKernelProjector2D(const CPa
 // destructor
 CParallelBeamBlobKernelProjector2D::~CParallelBeamBlobKernelProjector2D()
 {
-	clear();
-}
 
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CParallelBeamBlobKernelProjector2D::_clear()
-{
-	CProjector2D::_clear();
-	m_pfBlobValues.clear();
-	m_iBlobSampleCount = 0;
-	m_fBlobSize = 0;
-	m_fBlobSampleRate = 0;
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CParallelBeamBlobKernelProjector2D::clear()
-{
-	CProjector2D::clear();
-	m_pfBlobValues.clear();
-	m_iBlobSampleCount = 0;
-	m_fBlobSize = 0;
-	m_fBlobSampleRate = 0;
-	m_bIsInitialized = false;
 }
 
 //---------------------------------------------------------------------------------------
@@ -97,7 +76,7 @@ bool CParallelBeamBlobKernelProjector2D::_check()
 	// check base class
 	ASTRA_CONFIG_CHECK(CProjector2D::_check(), "ParallelBeamBlobKernelProjector2D", "Error in Projector2D initialization");
 
-	ASTRA_CONFIG_CHECK(dynamic_cast<CParallelProjectionGeometry2D*>(m_pProjectionGeometry) || dynamic_cast<CParallelVecProjectionGeometry2D*>(m_pProjectionGeometry), "ParallelBeamBlobKernelProjector2D", "Unsupported projection geometry");
+	ASTRA_CONFIG_CHECK(dynamic_cast<CParallelProjectionGeometry2D*>(m_pProjectionGeometry.get()) || dynamic_cast<CParallelVecProjectionGeometry2D*>(m_pProjectionGeometry.get()), "ParallelBeamBlobKernelProjector2D", "Unsupported projection geometry");
 
 	ASTRA_CONFIG_CHECK(m_iBlobSampleCount > 0, "ParallelBeamBlobKernelProjector2D", "m_iBlobSampleCount should be strictly positive.");
 
@@ -109,12 +88,9 @@ bool CParallelBeamBlobKernelProjector2D::_check()
 // Initialize, use a Config object
 bool CParallelBeamBlobKernelProjector2D::initialize(const Config& _cfg)
 {
-	ConfigReader<CProjector2D> CR("ParallelBeamBlobKernelProjector2D", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CProjector2D> CR("ParallelBeamBlobKernelProjector2D", this, _cfg);
 
 	// initialization of parent class
 	if (!CProjector2D::initialize(_cfg)) {
@@ -153,19 +129,16 @@ bool CParallelBeamBlobKernelProjector2D::initialize(const Config& _cfg)
 //----------------------------------------------------------------------------------------
 // initialize
 bool CParallelBeamBlobKernelProjector2D::initialize(const CParallelProjectionGeometry2D &_pProjectionGeometry,
-													const CVolumeGeometry2D &_pVolumeGeometry,
-													float32 _fBlobSize,
-													float32 _fBlobSampleRate,
-													int _iBlobSampleCount,
-													float32* _pfBlobValues)
+                                                    const CVolumeGeometry2D &_pVolumeGeometry,
+                                                    float32 _fBlobSize,
+                                                    float32 _fBlobSampleRate,
+                                                    int _iBlobSampleCount,
+                                                    float32* _pfBlobValues)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
-	m_pProjectionGeometry = _pProjectionGeometry.clone();
-	m_pVolumeGeometry = _pVolumeGeometry.clone();
+	m_pProjectionGeometry.reset(_pProjectionGeometry.clone());
+	m_pVolumeGeometry.reset(_pVolumeGeometry.clone());
 	m_fBlobSize = _fBlobSize;
 	m_fBlobSampleRate = _fBlobSampleRate;
 	m_iBlobSampleCount = _iBlobSampleCount;

@@ -68,24 +68,6 @@ cdef extern from "astra/VolumeGeometry2D.h" namespace "astra":
         Config* getConfiguration()
         bool isEqual(const CVolumeGeometry2D&)
 
-cdef extern from "astra/Float32Data2D.h" namespace "astra":
-    cdef cppclass CCustomMemory[T]:
-        pass
-    cdef cppclass CFloat32CustomMemory:
-        pass
-
-cdef extern from "astra/Float32VolumeData2D.h" namespace "astra":
-    cdef cppclass CFloat32VolumeData2D:
-        CFloat32VolumeData2D(const CVolumeGeometry2D&)
-        CFloat32VolumeData2D(const CVolumeGeometry2D&, CFloat32CustomMemory*)
-        CVolumeGeometry2D& getGeometry()
-        int getWidth()
-        int getHeight()
-        void changeGeometry(const CVolumeGeometry2D&)
-        Config* getConfiguration()
-
-
-
 cdef extern from "astra/ProjectionGeometry2D.h" namespace "astra":
     cdef cppclass CProjectionGeometry2D:
         CProjectionGeometry2D()
@@ -101,10 +83,10 @@ cdef extern from "astra/ProjectionGeometry2D.h" namespace "astra":
 cdef extern from "astra/ProjectionGeometry2DFactory.h" namespace "astra":
     cdef unique_ptr[CProjectionGeometry2D] constructProjectionGeometry2D(const string&type)
 
-cdef extern from "astra/Float32Data2D.h" namespace "astra::CFloat32Data2D":
-    cdef enum TWOEDataType "astra::CFloat32Data2D::EDataType":
-        TWOPROJECTION "astra::CFloat32Data2D::PROJECTION"
-        TWOVOLUME "astra::CFloat32Data2D::VOLUME"
+cdef extern from "astra/Data2D.h" namespace "astra::CData2D":
+    cdef enum TWOEDataType "astra::CData2D::EDataType":
+        TWOPROJECTION "astra::CData2D::PROJECTION"
+        TWOVOLUME "astra::CData2D::VOLUME"
 
 cdef extern from "astra/Data3D.h" namespace "astra::CData3D":
     cdef enum THREEEDataType "astra::CData3D::EDataType":
@@ -112,24 +94,38 @@ cdef extern from "astra/Data3D.h" namespace "astra::CData3D":
         THREEVOLUME "astra::CData3D::VOLUME"
 
 
-cdef extern from "astra/Float32Data2D.h" namespace "astra":
-    cdef cppclass CFloat32Data2D:
+cdef extern from "astra/Data2D.h" namespace "astra":
+    cdef cppclass CData2D:
         bool isInitialized()
         size_t getSize()
-        float32 *getData()
-        float32 **getData2D()
         int getWidth()
         int getHeight()
+        bool isFloat32Memory()
+        float32 *getFloat32Memory()
+        CDataStorage *getStorage()
         TWOEDataType getType()
 
-cdef extern from "astra/Float32ProjectionData2D.h" namespace "astra":
-    cdef cppclass CFloat32ProjectionData2D:
-        CFloat32ProjectionData2D(const CProjectionGeometry2D&)
-        CFloat32ProjectionData2D(const CProjectionGeometry2D&, CFloat32CustomMemory*)
+cdef extern from "astra/Data2D.h" namespace "astra":
+    cdef cppclass CFloat32VolumeData2D(CData2D):
+        CFloat32VolumeData2D(unique_ptr[CVolumeGeometry2D]&&, CDataStorage*)
+        CFloat32VolumeData2D(const CVolumeGeometry2D &, CDataStorage*)
+        CVolumeGeometry2D& getGeometry()
+        void changeGeometry(const CVolumeGeometry2D&)
+        void changeGeometry(unique_ptr[CVolumeGeometry2D] &&)
+    cdef CFloat32VolumeData2D* createCFloat32VolumeData2DMemory(unique_ptr[CVolumeGeometry2D]&&)
+    cdef CFloat32VolumeData2D* createCFloat32VolumeData2DMemory(const CVolumeGeometry2D &)
+
+cdef extern from "astra/Data2D.h" namespace "astra":
+    cdef cppclass CFloat32ProjectionData2D(CData2D):
+        CFloat32ProjectionData2D(unique_ptr[CProjectionGeometry2D]&&, CDataStorage*)
+        CFloat32ProjectionData2D(const CProjectionGeometry2D &, CDataStorage*)
         CProjectionGeometry2D& getGeometry()
         void changeGeometry(const CProjectionGeometry2D&)
+        void changeGeometry(unique_ptr[CProjectionGeometry2D] &&)
         int getDetectorCount()
         int getAngleCount()
+    cdef CFloat32ProjectionData2D* createCFloat32ProjectionData2DMemory(unique_ptr[CProjectionGeometry2D]&&)
+    cdef CFloat32ProjectionData2D* createCFloat32ProjectionData2DMemory(const CProjectionGeometry2D &)
 
 cdef extern from "astra/Algorithm.h" namespace "astra":
     cdef cppclass CAlgorithm:
@@ -138,11 +134,11 @@ cdef extern from "astra/Algorithm.h" namespace "astra":
         bool isInitialized()
 
 cdef extern from "astra/ReconstructionAlgorithm2D.h" namespace "astra":
-    cdef cppclass CReconstructionAlgorithm2D:
+    cdef cppclass CReconstructionAlgorithm2D(CAlgorithm):
         bool getResidualNorm(float32&)
 
 cdef extern from "astra/ReconstructionAlgorithm3D.h" namespace "astra":
-    cdef cppclass CReconstructionAlgorithm3D:
+    cdef cppclass CReconstructionAlgorithm3D(CAlgorithm):
         bool getResidualNorm(float32&)
 
 cdef extern from "astra/Projector2D.h" namespace "astra":
@@ -168,11 +164,7 @@ IF HAVE_CUDA==True:
         cdef cppclass CCudaProjector2D
 
     cdef extern from "astra/Data3D.h" namespace "astraCUDA3d":
-        cdef cppclass MemHandle3D:
-            pass
-
-    cdef extern from "astra/Data3D.h" namespace "astraCUDA3d":
-        cdef MemHandle3D wrapHandle(float *D_ptr, unsigned int x, unsigned int y, unsigned int z, unsigned int pitch)
+        cdef CDataStorage* wrapHandle(float *D_ptr, unsigned int x, unsigned int y, unsigned int z, unsigned int pitch)
 
 
 cdef extern from "astra/SparseMatrix.h" namespace "astra":
@@ -235,8 +227,6 @@ cdef extern from "astra/Data3D.h" namespace "astra":
         pass
     cdef cppclass CDataMemory[T](CDataStorage):
         CDataMemory(size_t)
-        CDataMemory(CCustomMemory[T]*)
-        pass
 
 cdef extern from "astra/Data3D.h" namespace "astra":
     cdef cppclass CFloat32VolumeData3D(CData3D):
@@ -264,7 +254,3 @@ cdef extern from "astra/Data3D.h" namespace "astra":
     cdef CFloat32ProjectionData3D* createCFloat32ProjectionData3DMemory(unique_ptr[CProjectionGeometry3D]&&)
     cdef CFloat32ProjectionData3D* createCFloat32ProjectionData3DMemory(const CProjectionGeometry3D &)
 
-IF HAVE_CUDA==True:
-    cdef extern from "astra/Data3D.h" namespace "astra":
-        cdef cppclass CDataGPU(CDataStorage):
-            CDataGPU(MemHandle3D)

@@ -54,10 +54,12 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 namespace astra {
 
+std::mutex g_GPUParams_mutex;
 SGPUParams* CCompositeGeometryManager::s_params = 0;
 
 CCompositeGeometryManager::CCompositeGeometryManager()
 {
+	std::unique_lock lock{g_GPUParams_mutex};
 	m_iMaxSize = 0;
 
 	if (s_params) {
@@ -68,118 +70,103 @@ CCompositeGeometryManager::CCompositeGeometryManager()
 
 
 
-class _AstraExport CGPUMemory {
+class _AstraExport CGPUMemoryHandler {
+protected:
+	CData3D *_dataSource;
+	CData3D *_data;
 public:
-	astraCUDA3d::MemHandle3D hnd; // Only required to be valid between allocate/free
-	virtual bool allocateGPUMemory(unsigned int x, unsigned int y, unsigned int z, astraCUDA3d::Mem3DZeroMode zero)=0;
 	virtual bool copyToGPUMemory(const astraCUDA3d::SSubDimensions3D &pos)=0;
 	virtual bool copyFromGPUMemory(const astraCUDA3d::SSubDimensions3D &pos)=0;
-	virtual ~CGPUMemory() { }
+	virtual ~CGPUMemoryHandler() { }
+
+	CData3D* getData() { return _data; }
 };
 
-class CExistingGPUMemory : public astra::CGPUMemory {
+class CDataMemoryHandler : public CGPUMemoryHandler {
 public:
-	CExistingGPUMemory(CData3D *d);
-	virtual bool allocateGPUMemory(unsigned int x, unsigned int y, unsigned int z, astraCUDA3d::Mem3DZeroMode zero);
-	virtual bool copyToGPUMemory(const astraCUDA3d::SSubDimensions3D &pos);
-	virtual bool copyFromGPUMemory(const astraCUDA3d::SSubDimensions3D &pos);
-private:
-	unsigned int x, y, z;
-};
+	CDataMemoryHandler(const CCompositeGeometryManager::CPart &part, astraCUDA3d::Mem3DZeroMode zero) {
+		CData3D *d = part.pData;
+		assert(d->isFloat32Memory());
+		_dataSource = d;
 
-class CDefaultGPUMemory : public astra::CGPUMemory {
-public:
-	CDefaultGPUMemory(CData3D* d) : ptr(nullptr) {
-		assert(d->getStorage()->isMemory());
-		if (d->getStorage()->isFloat32())
-			ptr = dynamic_cast<CDataMemory<float32>*>(d->getStorage())->getData();
-		else
+		size_t x, y, z;
+		part.getDims(x, y, z);
+		CDataStorage *storage = astraCUDA3d::allocateGPUMemory(x, y, z, zero);
+		if (!storage)
+			_data = nullptr;
+
+		if (part.eType == CCompositeGeometryManager::CPart::PART_VOL) {
+			_data = new CFloat32VolumeData3D(*dynamic_cast<const CCompositeGeometryManager::CVolumePart&>(part).pGeom, storage);
+		} else if (part.eType == CCompositeGeometryManager::CPart::PART_PROJ) {
+			_data = new CFloat32ProjectionData3D(*dynamic_cast<const CCompositeGeometryManager::CProjectionPart&>(part).pGeom, storage);
+		} else {
 			assert(false);
+		}
+
 	}
-	virtual ~CDefaultGPUMemory() {
-		freeGPUMemory();
-	}
-	virtual bool allocateGPUMemory(unsigned int x, unsigned int y, unsigned int z, astraCUDA3d::Mem3DZeroMode zero) {
-		hnd = astraCUDA3d::allocateGPUMemory(x, y, z, zero);
-		return (bool)hnd;
+	virtual ~CDataMemoryHandler() {
+		if (_data)
+			astraCUDA3d::freeGPUMemory(_data);
+		delete _data;
 	}
 	virtual bool copyToGPUMemory(const astraCUDA3d::SSubDimensions3D &pos) {
-		return astraCUDA3d::copyToGPUMemory(ptr, hnd, pos);
+		return astraCUDA3d::copyToGPUMemory(_dataSource, _data, pos);
 	}
 	virtual bool copyFromGPUMemory(const astraCUDA3d::SSubDimensions3D &pos) {
-		return astraCUDA3d::copyFromGPUMemory(ptr, hnd, pos);
+		return astraCUDA3d::copyFromGPUMemory(_dataSource, _data, pos);
 	}
-private:
-	float *ptr;
-	void freeGPUMemory() {
-		astraCUDA3d::freeGPUMemory(hnd);
-	}
+};
+
+class CDataGPUHandler : public CGPUMemoryHandler {
+public:
+	CDataGPUHandler(const CCompositeGeometryManager::CPart& part, astraCUDA3d::Mem3DZeroMode zero);
+	virtual bool copyToGPUMemory(const astraCUDA3d::SSubDimensions3D &pos);
+	virtual bool copyFromGPUMemory(const astraCUDA3d::SSubDimensions3D &pos);
 };
 
 
 
-CExistingGPUMemory::CExistingGPUMemory(CData3D *d)
+CDataGPUHandler::CDataGPUHandler(const CCompositeGeometryManager::CPart &part, astraCUDA3d::Mem3DZeroMode zero)
 {
-	assert(d->getStorage()->isGPU());
-	CDataGPU *storage = dynamic_cast<CDataGPU*>(d->getStorage());
+	_dataSource = part.pData;
+	_data = _dataSource;
 
-	hnd = storage->getHandle();
-	x = d->getWidth();
-	y = d->getHeight();
-	z = d->getDepth();
+	assert(_data->getStorage()->isGPU());
+
+	// Can change this later to allow subvolumes if we need those.
+	size_t x, y, z;
+	part.getDims(x, y, z);
+	assert(x == (size_t)_dataSource->getShape()[0]);
+	assert(y == (size_t)_dataSource->getShape()[1]);
+	assert(z == (size_t)_dataSource->getShape()[2]);
+
+	if (zero == astraCUDA3d::INIT_ZERO) {
+		astraCUDA3d::zeroGPUMemory(_data);
+	}
 }
-
-bool CExistingGPUMemory::allocateGPUMemory(unsigned int x_, unsigned int y_, unsigned int z_, astraCUDA3d::Mem3DZeroMode zero) {
-	assert(x_ == x);
-	assert(y_ == y);
-	assert(z_ == z);
-
-	if (zero == astraCUDA3d::INIT_ZERO)
-		return astraCUDA3d::zeroGPUMemory(hnd, x, y, z);
-	else
-		return true;
-}
-bool CExistingGPUMemory::copyToGPUMemory(const astraCUDA3d::SSubDimensions3D &pos) {
-	assert(pos.nx == x);
-	assert(pos.ny == y);
-	assert(pos.nz == z);
-	assert(pos.pitch == x);
-	assert(pos.subx == 0);
-	assert(pos.suby == 0);
-	assert(pos.subnx == x);
-	assert(pos.subny == y);
-
-	// These are less necessary than x/y, but allowing access to
-	// subvolumes needs an interface change
-	assert(pos.subz == 0);
-	assert(pos.subnz == z);
-
+bool CDataGPUHandler::copyToGPUMemory(const astraCUDA3d::SSubDimensions3D &pos) {
+	assert(pos.nx == (size_t)_dataSource->getShape()[0]);
+	assert(pos.ny == (size_t)_dataSource->getShape()[1]);
+	assert(pos.nz == (size_t)_dataSource->getShape()[2]);
+	assert(pos.pitch == pos.nx);
+	assert(pos.isFullVolume());
 	return true;
 }
-bool CExistingGPUMemory::copyFromGPUMemory(const astraCUDA3d::SSubDimensions3D &pos) {
-	assert(pos.nx == x);
-	assert(pos.ny == y);
-	assert(pos.nz == z);
-	assert(pos.pitch == x);
-	assert(pos.subx == 0);
-	assert(pos.suby == 0);
-	assert(pos.subnx == x);
-	assert(pos.subny == y);
-
-	// These are less necessary than x/y, but allowing access to
-	// subvolumes needs an interface change
-	assert(pos.subz == 0);
-	assert(pos.subnz == z);
-
+bool CDataGPUHandler::copyFromGPUMemory(const astraCUDA3d::SSubDimensions3D &pos) {
+	assert(pos.nx == (size_t)_dataSource->getShape()[0]);
+	assert(pos.ny == (size_t)_dataSource->getShape()[1]);
+	assert(pos.nz == (size_t)_dataSource->getShape()[2]);
+	assert(pos.pitch == pos.nx);
+	assert(pos.isFullVolume());
 	return true;
 }
 
 
-CGPUMemory * createGPUMemoryHandler(CData3D *d) {
-	if (d->getStorage()->isMemory())
-		return new CDefaultGPUMemory(d);
+std::unique_ptr<CGPUMemoryHandler> createGPUMemoryHandler(const CCompositeGeometryManager::CPart &part, astraCUDA3d::Mem3DZeroMode zero) {
+	if (part.pData->getStorage()->isMemory())
+		return std::unique_ptr<CGPUMemoryHandler>(new CDataMemoryHandler(part, zero));
 	else
-		return new CExistingGPUMemory(d);
+		return std::unique_ptr<CGPUMemoryHandler>(new CDataGPUHandler(part, zero));
 }
 
 
@@ -1159,25 +1146,16 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 				}
 			} else {
 				assert(output->pData->getStorage()->isGPU());
-				CDataGPU *gpuMem = dynamic_cast<CDataGPU *>(output->pData->getStorage());
-				assert(gpuMem);
 				assert(output->isFull()); // TODO: zero subset?
 
-				zeroGPUMemory(gpuMem->getHandle(), outx, outy, outz);
+				astraCUDA3d::zeroGPUMemory(output->pData);
 			}
 		}
 		return true;
 	}
 
-	CGPUMemory *dstMem = createGPUMemoryHandler(output->pData);
-	// Use a unique_ptr to delete dstMem when we return (early)
-	std::unique_ptr<CGPUMemory> dstUniquePtr{dstMem};
-
-	bool ok = dstMem->allocateGPUMemory(outx, outy, outz, zero ? astraCUDA3d::INIT_ZERO : astraCUDA3d::INIT_NO);
-	// TODO: cleanup and return error code after any error
-	//
-	// TODO: Make the memory handler a stack object and clean up afterwards?
-	//
+	std::unique_ptr<CGPUMemoryHandler> dstMem = createGPUMemoryHandler(*output, zero ? astraCUDA3d::INIT_ZERO : astraCUDA3d::INIT_NO);
+	bool ok = dstMem->getData() != nullptr;
 	if (!ok) {
 		ASTRA_ERROR("Error allocating GPU memory");
 		return false;
@@ -1210,17 +1188,14 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 		size_t inx, iny, inz;
 		j.pInput->getDims(inx, iny, inz);
 
-		CGPUMemory *srcMem = createGPUMemoryHandler(j.pInput->pData);
-		// Use a unique_ptr to delete srcMem when we return (early)
-		std::unique_ptr<CGPUMemory> srcUniquePtr{srcMem};
-
-		astraCUDA3d::SSubDimensions3D srcdims = getPartSubDims(j.pInput.get());
-
-		ok = srcMem->allocateGPUMemory(inx, iny, inz, astraCUDA3d::INIT_NO);
+		std::unique_ptr<CGPUMemoryHandler> srcMem = createGPUMemoryHandler(*j.pInput.get(), astraCUDA3d::INIT_NO);
+		ok = srcMem->getData() != nullptr;
 		if (!ok) {
 			ASTRA_ERROR("Error allocating GPU memory");
 			return false;
 		}
+
+		astraCUDA3d::SSubDimensions3D srcdims = getPartSubDims(j.pInput.get());
 
 		ok = srcMem->copyToGPUMemory(srcdims);
 		if (!ok) {
@@ -1231,12 +1206,12 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 		switch (j.eType) {
 		case CCompositeGeometryManager::JOB_FP:
 		{
-			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pInput.get()));
-			assert(dynamic_cast<CCompositeGeometryManager::CProjectionPart*>(output));
+			assert(dynamic_cast<CFloat32ProjectionData3D*>(dstMem->getData()));
+			assert(dynamic_cast<CFloat32VolumeData3D*>(srcMem->getData()));
 
 			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: doing FP");
 
-			ok = astraCUDA3d::FP(((CCompositeGeometryManager::CProjectionPart*)output)->pGeom, dstMem->hnd, ((CCompositeGeometryManager::CVolumePart*)j.pInput.get())->pGeom, srcMem->hnd, detectorSuperSampling, projKernel);
+			ok = astraCUDA3d::FP(dynamic_cast<CFloat32ProjectionData3D*>(dstMem->getData()), dynamic_cast<CFloat32VolumeData3D*>(srcMem->getData()), detectorSuperSampling, projKernel);
 			if (!ok) {
 				ASTRA_ERROR("Error performing sub-FP");
 				return false;
@@ -1246,12 +1221,12 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 		break;
 		case CCompositeGeometryManager::JOB_BP:
 		{
-			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(output));
-			assert(dynamic_cast<CCompositeGeometryManager::CProjectionPart*>(j.pInput.get()));
+			assert(dynamic_cast<CFloat32ProjectionData3D*>(srcMem->getData()));
+			assert(dynamic_cast<CFloat32VolumeData3D*>(dstMem->getData()));
 
 			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: doing BP");
 
-			ok = astraCUDA3d::BP(((CCompositeGeometryManager::CProjectionPart*)j.pInput.get())->pGeom, srcMem->hnd, ((CCompositeGeometryManager::CVolumePart*)output)->pGeom, dstMem->hnd, voxelSuperSampling, projKernel);
+			ok = astraCUDA3d::BP(dynamic_cast<CFloat32ProjectionData3D*>(srcMem->getData()), dynamic_cast<CFloat32VolumeData3D*>(dstMem->getData()), voxelSuperSampling, projKernel);
 			if (!ok) {
 				ASTRA_ERROR("Error performing sub-BP");
 				return false;
@@ -1261,8 +1236,8 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 		break;
 		case CCompositeGeometryManager::JOB_FDK:
 		{
-			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(output));
-			assert(dynamic_cast<CCompositeGeometryManager::CProjectionPart*>(j.pInput.get()));
+			assert(dynamic_cast<CFloat32ProjectionData3D*>(srcMem->getData()));
+			assert(dynamic_cast<CFloat32VolumeData3D*>(dstMem->getData()));
 
 			float fOutputScale = srcdims.subny;
 			fOutputScale /= srcdims.ny;
@@ -1276,7 +1251,7 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 			} else {
 				ASTRA_DEBUG("CCompositeGeometryManager::doJobs: doing FDK");
 
-				ok = astraCUDA3d::FDK(((CCompositeGeometryManager::CProjectionPart*)j.pInput.get())->pGeom, srcMem->hnd, ((CCompositeGeometryManager::CVolumePart*)output)->pGeom, dstMem->hnd, j.FDKSettings.bShortScan, j.FDKSettings.filterConfig, fOutputScale );
+				ok = astraCUDA3d::FDK(dynamic_cast<CFloat32ProjectionData3D*>(srcMem->getData()), dynamic_cast<CFloat32VolumeData3D*>(dstMem->getData()), j.FDKSettings.bShortScan, j.FDKSettings.filterConfig, fOutputScale );
 				if (!ok) {
 					ASTRA_ERROR("Error performing sub-FDK");
 					return false;
@@ -1290,7 +1265,7 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 			return false;
 		}
 
-		// srcUniquePtr goes out of scope here, freeing srcMem
+		// srcMem goes out of scope here, freeing any allocated memory
 	}
 
 	ok = dstMem->copyFromGPUMemory(dstdims);
@@ -1299,7 +1274,7 @@ static bool doJob(const CCompositeGeometryManager::TJobSetInternal::const_iterat
 	       return false;
 	}
 
-	// dstUniquePtr goes out of scope here, freeing dstMem
+	// dstMem goes out of scope here, freeing any allocated memory
 
 	return true;
 }
@@ -1310,11 +1285,20 @@ public:
 	WorkQueue(CCompositeGeometryManager::TJobSetInternal &_jobs) : m_jobs(_jobs), failed(false) {
 		m_iter = m_jobs.begin();
 	}
-	void flag_failure() {
+	void flag_failure(const std::string &err) {
 		failed = true;
+		lock();
+		// We overwrite any existing error. Might have to change that
+		// if we ever change the Python error capture mechanism.
+		m_error = err;
+		unlock();
 	}
 	bool has_failed() const {
 		return failed;
+	}
+	std::string get_error() const {
+		// (Not thread safe on purpose)
+		return m_error;
 	}
 	bool receive(CCompositeGeometryManager::TJobSetInternal::const_iterator &i) {
 		if (failed)
@@ -1345,6 +1329,7 @@ private:
 	CCompositeGeometryManager::TJobSetInternal::const_iterator m_iter;
 	std::atomic<bool> failed;
 	std::mutex m_mutex;
+	std::string m_error;
 };
 
 struct WorkThreadInfo {
@@ -1361,7 +1346,10 @@ void runEntries(WorkThreadInfo* info)
 		astraCUDA3d::setGPUIndex(info->m_iGPU);
 		if (!doJob(i)) {
 			ASTRA_DEBUG("Thread on GPU %d reporting failure", info->m_iGPU);
-			info->m_queue->flag_failure();
+			// Capture last error message from this thread to
+			// report it back to the main thread.
+			std::string err = CLogger::getLastErrMsg();
+			info->m_queue->flag_failure(err);
 		}
 	}
 	ASTRA_DEBUG("Finishing thread on GPU %d", info->m_iGPU);
@@ -1474,8 +1462,12 @@ bool CCompositeGeometryManager::doJobs(TJobSetInternal &jobset)
 
 		runWorkQueue(wq, m_GPUIndices);
 
-		if (wq.has_failed())
+		if (wq.has_failed()) {
+			std::string err = wq.get_error();
+			if (!err.empty())
+				ASTRA_ERROR("%s", err.c_str());
 			return false;
+		}
 
 	}
 
@@ -1490,6 +1482,7 @@ bool CCompositeGeometryManager::doJobs(TJobSetInternal &jobset)
 //static
 void CCompositeGeometryManager::setGlobalGPUParams(const SGPUParams& params)
 {
+	std::unique_lock lock{g_GPUParams_mutex};
 	delete s_params;
 
 	s_params = new SGPUParams;

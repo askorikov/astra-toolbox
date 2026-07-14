@@ -37,50 +37,21 @@ namespace astra
 
 //----------------------------------------------------------------------------------------
 // constructor
-CProjector2D::CProjector2D() : configCheckData(0)
+CProjector2D::CProjector2D()
+	: m_bIsInitialized(false),
+	  configCheckData(nullptr)
 {
 
-	m_bIsInitialized = false;
 }
 
 //----------------------------------------------------------------------------------------
 // constructor
-CProjector2D::CProjector2D(const CProjectionGeometry2D &_pProjectionGeometry, const CVolumeGeometry2D &_pVolumeGeometry) : configCheckData(0)
+CProjector2D::CProjector2D(const CProjectionGeometry2D &_pProjectionGeometry, const CVolumeGeometry2D &_pVolumeGeometry)
+       : CProjector2D()
 {
-	m_pProjectionGeometry = _pProjectionGeometry.clone();
-	m_pVolumeGeometry = _pVolumeGeometry.clone();
+	m_pProjectionGeometry.reset(_pProjectionGeometry.clone());
+	m_pVolumeGeometry.reset(_pVolumeGeometry.clone());
 	m_bIsInitialized = true;
-}
-
-//----------------------------------------------------------------------------------------
-// destructor
-CProjector2D::~CProjector2D()
-{
-	clear();
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CProjector2D::_clear()
-{
-	m_pProjectionGeometry = NULL;
-	m_pVolumeGeometry = NULL;
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CProjector2D::clear()
-{
-	if (m_pProjectionGeometry) {
-		delete m_pProjectionGeometry;
-		m_pProjectionGeometry = NULL;
-	}
-	if (m_pVolumeGeometry) {
-		delete m_pVolumeGeometry;
-		m_pVolumeGeometry = NULL;
-	}
-	m_bIsInitialized = false;
 }
 
 //---------------------------------------------------------------------------------------
@@ -103,12 +74,9 @@ bool CProjector2D::_check()
 // Initialize, use a Config object
 bool CProjector2D::initialize(const Config& _cfg)
 {
-	ConfigReader<CProjector2D> CR("Projector2D", this, _cfg);
+	assert(!m_bIsInitialized);
 
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	ConfigReader<CProjector2D> CR("Projector2D", this, _cfg);
 
 	Config *subcfg;
 	std::string type;
@@ -127,7 +95,7 @@ bool CProjector2D::initialize(const Config& _cfg)
 
 	pProjGeometry->initialize(*subcfg);
 	delete subcfg;
-	m_pProjectionGeometry = pProjGeometry.release();
+	m_pProjectionGeometry = std::move(pProjGeometry);
 
 	ASTRA_CONFIG_CHECK(m_pProjectionGeometry->isInitialized(), "Projector2D", "ProjectionGeometry not initialized.");	
 
@@ -135,7 +103,7 @@ bool CProjector2D::initialize(const Config& _cfg)
 	if (!ok)
 		return false;
 
-	m_pVolumeGeometry = new CVolumeGeometry2D();
+	m_pVolumeGeometry = std::make_unique<CVolumeGeometry2D>();
 	m_pVolumeGeometry->initialize(*subcfg);
 	delete subcfg;
 

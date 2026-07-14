@@ -24,6 +24,7 @@
 # -----------------------------------------------------------------------
 import os
 import platform
+import sysconfig
 
 from Cython.Build import cythonize
 import numpy as np
@@ -31,6 +32,14 @@ from setuptools import setup
 
 ASTRA_USE_CUDA = os.environ.get('ASTRA_USE_CUDA') in ('ON', 'TRUE', 'YES')
 print("ASTRA_USE_CUDA is set to {}".format(ASTRA_USE_CUDA))
+
+# Enable freethreading builds (skip on Windows because of dll_export and thread_local
+# incompatibility)
+FREE_THREADING_COMPATIBLE = (
+    sysconfig.get_config_var('Py_GIL_DISABLED') == 1
+    and platform.system() != 'Windows'
+)
+print("FREE_THREADING_COMPATIBLE is set to {}".format(FREE_THREADING_COMPATIBLE))
 
 # Create a cython cxi file with either HAVE_CUDA=True or False
 with open(
@@ -41,6 +50,9 @@ with open(
 
 ext_modules = cythonize(
     module_list=os.path.join('.', 'astra', '*.pyx'),
+    compiler_directives={
+        'freethreading_compatible': FREE_THREADING_COMPATIBLE,
+    },
     language_level=3,  # sets python features to python 3
 )
 
@@ -104,7 +116,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='astra-toolbox',
-    version='2.4.1',
+    version='2.5.0',
     description='High-performance GPU primitives and algorithms for 2D and 3D tomography',
     long_description=long_description,
     long_description_content_type='text/markdown',

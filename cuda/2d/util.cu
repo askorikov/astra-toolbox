@@ -28,11 +28,14 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/cuda/gpu_runtime_wrapper.h"
 
 #include "astra/cuda/2d/util.h"
+#include "astra/cuda/3d/mem3d_internal.h"
 
 #include "astra/Logging.h"
+#include "astra/Data2D.h"
 
 #include <cstdio>
 #include <cassert>
+#include <cstring>
 
 namespace astraCUDA {
 
@@ -181,14 +184,14 @@ bool createArrayAndTextureObject2D(float* data, cudaArray*& dataArray, cudaTextu
 	texObj = 0;
 
 	if (!checkCuda(cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL), "createTextureObject2D")) {
-		cudaFreeArray(dataArray);
+		logCuda(cudaFreeArray(dataArray), "createArrayAndTextureObject2D free");
 		return false;
 	}
 
 	bool ok = checkCuda(cudaMemcpy2DToArrayAsync(dataArray, 0, 0, data, pitch*sizeof(float), width*sizeof(float), height, cudaMemcpyDeviceToDevice, stream()), "createTextureObject2D memcpy");
 	ok &= stream.syncIfSync("createArrayAndTextureObject2D sync");
 	if (!ok) {
-		cudaFreeArray(dataArray);
+		logCuda(cudaFreeArray(dataArray), "createArrayAndTextureObject2D free");
 		return false;
 	}
 
@@ -298,9 +301,10 @@ __global__ void reduce2D(float *g_idata, float *g_odata,
 		g_odata[blockIdx.y * gridDim.x + blockIdx.x] = sdata[0];
 }
 
-float dotProduct2D(float* D_data, unsigned int pitch,
-                   unsigned int width, unsigned int height,
-                   std::optional<cudaStream_t> _stream)
+bool dotProduct2D(float* D_data, unsigned int pitch,
+                  unsigned int width, unsigned int height,
+                  float &fRet,
+                  std::optional<cudaStream_t> _stream)
 {
 	StreamHelper stream(_stream);
 	if (!stream)
@@ -314,7 +318,9 @@ float dotProduct2D(float* D_data, unsigned int pitch,
 	dim3 dimGrid2(bx, by);
 
 	float* D_buf;
-	cudaMalloc(&D_buf, sizeof(float) * (bx * by + 1) );
+	if (!checkCuda(cudaMalloc(&D_buf, sizeof(float) * (bx * by + 1) ), "dotProduct2D malloc")) {
+		return false;
+	}
 	float* D_res = D_buf + (bx*by);
 
 	// Step 1: reduce 2D from image to a single vector, taking sum of squares
@@ -334,23 +340,38 @@ float dotProduct2D(float* D_data, unsigned int pitch,
 		reduce1D<1><<< 1, 1, sizeof(float)*1*2, stream()>>>(D_buf, D_res, bx*by);
 
 	float x;
-	cudaMemcpyAsync(&x, D_res, 4, cudaMemcpyDeviceToHost, stream());
+	if (!checkCuda(cudaMemcpyAsync(&x, D_res, 4, cudaMemcpyDeviceToHost, stream()), "dotProduct2D memcpy")) {
+		logCuda(cudaFree(D_buf), "dotProduct2D free");
+		return false;
+	}
 
-	stream.sync("dotProduct2D");
+	if (!stream.sync("dotProduct2D")) {
+		logCuda(cudaFree(D_buf), "dotProduct2D free");
+		return false;
+	}
 
-	cudaFree(D_buf);
+	logCuda(cudaFree(D_buf), "dotProduct2D free");
 
-	return x;
+	fRet = x;
+	return true;
 }
 
 bool checkCuda(cudaError_t err, const char *msg)
 {
 	if (err != cudaSuccess) {
+		// TODO: Should we call cudaGetLastError() here to reset
+		// the error condition (in the case of non-fatal errors) ?
 		ASTRA_ERROR("%s: CUDA error %d: %s.", msg, err, cudaGetErrorString(err));
 		return false;
 	} else {
 		return true;
 	}
+}
+
+// Variant of checkCuda without [[nodiscard]]
+bool logCuda(cudaError_t err, const char *msg)
+{
+	return checkCuda(err, msg);
 }
 
 }

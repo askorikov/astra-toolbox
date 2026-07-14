@@ -43,17 +43,16 @@ using namespace astra;
 // default constructor
 CParallelBeamLinearKernelProjector2D::CParallelBeamLinearKernelProjector2D()
 {
-	_clear();
+
 }
 
 
 //----------------------------------------------------------------------------------------
 // constructor
 CParallelBeamLinearKernelProjector2D::CParallelBeamLinearKernelProjector2D(const CParallelProjectionGeometry2D &_pProjectionGeometry,
-																		   const CVolumeGeometry2D &_pReconstructionGeometry)
-
+                                                                           const CVolumeGeometry2D &_pReconstructionGeometry)
+	: CParallelBeamLinearKernelProjector2D()
 {
-	_clear();
 	initialize(_pProjectionGeometry, _pReconstructionGeometry);
 }
 
@@ -61,23 +60,7 @@ CParallelBeamLinearKernelProjector2D::CParallelBeamLinearKernelProjector2D(const
 // destructor
 CParallelBeamLinearKernelProjector2D::~CParallelBeamLinearKernelProjector2D()
 {
-	clear();
-}
 
-//---------------------------------------------------------------------------------------
-// Clear - CParallelBeamLinearKernelProjector2D
-void CParallelBeamLinearKernelProjector2D::_clear()
-{
-	CProjector2D::_clear();
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CParallelBeamLinearKernelProjector2D::clear()
-{
-	CProjector2D::clear();
-	m_bIsInitialized = false;
 }
 
 //---------------------------------------------------------------------------------------
@@ -87,7 +70,7 @@ bool CParallelBeamLinearKernelProjector2D::_check()
 	// check base class
 	ASTRA_CONFIG_CHECK(CProjector2D::_check(), "ParallelBeamLinearKernelProjector2D", "Error in Projector2D initialization");
 
-	ASTRA_CONFIG_CHECK(dynamic_cast<CParallelProjectionGeometry2D*>(m_pProjectionGeometry) || dynamic_cast<CParallelVecProjectionGeometry2D*>(m_pProjectionGeometry), "ParallelBeamLinearKernelProjector2D", "Unsupported projection geometry");
+	ASTRA_CONFIG_CHECK(dynamic_cast<CParallelProjectionGeometry2D*>(m_pProjectionGeometry.get()) || dynamic_cast<CParallelVecProjectionGeometry2D*>(m_pProjectionGeometry.get()), "ParallelBeamLinearKernelProjector2D", "Unsupported projection geometry");
 
 	/// TODO: ADD PIXEL H/W LIMITATIONS
 	ASTRA_CONFIG_CHECK(abs(m_pVolumeGeometry->getPixelLengthX() / m_pVolumeGeometry->getPixelLengthY()) - 1 < eps, "ParallelBeamLinearKernelProjector2D", "Pixel height must equal pixel width.");
@@ -100,10 +83,7 @@ bool CParallelBeamLinearKernelProjector2D::_check()
 // Initialize, use a Config object
 bool CParallelBeamLinearKernelProjector2D::initialize(const Config& _cfg)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// initialization of parent class
 	if (!CProjector2D::initialize(_cfg)) {
@@ -118,16 +98,13 @@ bool CParallelBeamLinearKernelProjector2D::initialize(const Config& _cfg)
 //---------------------------------------------------------------------------------------
 // Initialize
 bool CParallelBeamLinearKernelProjector2D::initialize(const CParallelProjectionGeometry2D &_pProjectionGeometry,
-													  const CVolumeGeometry2D &_pVolumeGeometry)
+                                                      const CVolumeGeometry2D &_pVolumeGeometry)
 {
-	// if already initialized, clear first
-	if (m_bIsInitialized) {
-		clear();
-	}
+	assert(!m_bIsInitialized);
 
 	// hardcopy geometries
-	m_pProjectionGeometry = _pProjectionGeometry.clone();
-	m_pVolumeGeometry = _pVolumeGeometry.clone();
+	m_pProjectionGeometry.reset(_pProjectionGeometry.clone());
+	m_pVolumeGeometry.reset(_pVolumeGeometry.clone());
 
 	// success
 	m_bIsInitialized = _check();

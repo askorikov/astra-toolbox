@@ -31,7 +31,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 #include "astra/cuda/2d/astra.h"
 #include "astra/cuda/2d/darthelper.h"
-#include "astra/cuda/2d/algo.h"
 
 #include "astra/AstraObjectManager.h"
 
@@ -109,7 +108,7 @@ bool CCudaDartSmoothingAlgorithm::run(int _iNrIterations)
 
 	astraCUDA::setGPUIndex(m_iGPUIndex);
 	
-	astraCUDA::dartSmoothing(m_pOut->getData(), m_pIn->getDataConst(), m_fB, m_iRadius, width, height);
+	astraCUDA::dartSmoothing(m_pOut->getFloat32Memory(), m_pIn->getFloat32Memory(), m_fB, m_iRadius, width, height);
 
 	return true;
 }

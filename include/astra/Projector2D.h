@@ -30,10 +30,11 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 #include <cmath>
 #include <vector>
+#include <memory>
 
 #include "Globals.h"
 #include "Config.h"
-#include "Float32Data2D.h"
+#include "Data2D.h"
 #include "ParallelProjectionGeometry2D.h"
 #include "ProjectionGeometry2D.h"
 #include "VolumeGeometry2D.h"
@@ -57,8 +58,8 @@ class _AstraExport CProjector2D
 {
 
 protected:
-	CProjectionGeometry2D* m_pProjectionGeometry; ///< Used projection geometry
-	CVolumeGeometry2D* m_pVolumeGeometry; ///< Used volume geometry
+	std::unique_ptr<CProjectionGeometry2D> m_pProjectionGeometry; ///< Used projection geometry
+	std::unique_ptr<CVolumeGeometry2D> m_pVolumeGeometry; ///< Used volume geometry
 	bool m_bIsInitialized; ///< Has this class been initialized?
 
 	/** Default Constructor.
@@ -72,9 +73,9 @@ protected:
 	 */
 	CProjector2D(const CProjectionGeometry2D &_pProjectionGeometry, const CVolumeGeometry2D &_pVolumeGeometry);
 
-	/** Initial clearing. Only to be used by constructors.
-	 */
-	virtual void _clear();
+	// Delete copy ctor/operator to prevent copying Projector2D objects
+	CProjector2D(const CProjector2D&)=delete;
+	CProjector2D& operator=(const CProjector2D&)=delete;
 
 	/** Check the values of this object.  If everything is ok, the object can be set to the initialized state.
 	 * The following statements are then guaranteed to hold:
@@ -85,13 +86,9 @@ protected:
 
 public:
 	
-	/** Destructor.
+	/** Virtual default destructor.
 	 */
-	virtual ~CProjector2D();
-
-	/** Clear this class.
-	 */
-	virtual void clear();
+	virtual ~CProjector2D()=default;
 
 	/** Initialize the projector with a config object.
 	 * This function does not set m_bInitialized to true.

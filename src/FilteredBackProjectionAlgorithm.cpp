@@ -44,50 +44,27 @@ namespace astra {
 
 #include "astra/Projector2DImpl.inl"
 
-const int FFT = 1;
-const int IFFT = -1;
-
 //----------------------------------------------------------------------------------------
 // Constructor
 CFilteredBackProjectionAlgorithm::CFilteredBackProjectionAlgorithm() 
+	: m_filterConfig()
 {
-	_clear();
+
 }
 
 //----------------------------------------------------------------------------------------
 // Destructor
 CFilteredBackProjectionAlgorithm::~CFilteredBackProjectionAlgorithm() 
 {
-	clear();
+
 }
-
-//---------------------------------------------------------------------------------------
-// Clear - Constructors
-void CFilteredBackProjectionAlgorithm::_clear()
-{
-	m_pProjector = NULL;
-	m_pSinogram = NULL;
-	m_pReconstruction = NULL;
-	m_bIsInitialized = false;
-}
-
-//---------------------------------------------------------------------------------------
-// Clear - Public
-void CFilteredBackProjectionAlgorithm::clear()
-{
-	m_pProjector = NULL;
-	m_pSinogram = NULL;
-	m_pReconstruction = NULL;
-	m_bIsInitialized = false;
-
-	m_filterConfig.m_pfCustomFilter.clear();
-}
-
 
 //---------------------------------------------------------------------------------------
 // Initialize, use a Config object
 bool CFilteredBackProjectionAlgorithm::initialize(const Config& _cfg)
 {
+	assert(!m_bIsInitialized);
+
 	ConfigReader<CAlgorithm> CR("FilteredBackProjectionAlgorithm", this, _cfg);
 
 	bool ok = true;
@@ -115,6 +92,10 @@ bool CFilteredBackProjectionAlgorithm::initialize(const Config& _cfg)
 		return false;
 	}
 
+	if (!ok)
+		return false;
+
+
 	// TODO: check that the angles are linearly spaced between 0 and pi
 
 	// success
@@ -125,10 +106,10 @@ bool CFilteredBackProjectionAlgorithm::initialize(const Config& _cfg)
 //----------------------------------------------------------------------------------------
 // Initialize
 bool CFilteredBackProjectionAlgorithm::initialize(CProjector2D* _pProjector, 
-												  CFloat32VolumeData2D* _pVolume,
-												  CFloat32ProjectionData2D* _pSinogram)
+                                                  CFloat32VolumeData2D* _pVolume,
+                                                  CFloat32ProjectionData2D* _pSinogram)
 {
-	clear();
+	assert(!m_bIsInitialized);
 
 	// store classes
 	m_pProjector = _pProjector;
@@ -159,6 +140,9 @@ bool CFilteredBackProjectionAlgorithm::_check()
 
 	ASTRA_CONFIG_CHECK(checkCustomFilterSize(m_filterConfig, m_pSinogram->getGeometry()), "FBP", "Filter size mismatch");
 
+	ASTRA_CONFIG_CHECK(m_pSinogram->isFloat32Memory(), "FBP", "Projection data object not a float32 host memory object");
+	ASTRA_CONFIG_CHECK(m_pReconstruction->isFloat32Memory(), "FBP", "Reconstruction data object not a float32 host memory object");
+
 	// success
 	return true;
 }
@@ -171,13 +155,17 @@ bool CFilteredBackProjectionAlgorithm::run(int _iNrIterations)
 	ASTRA_ASSERT(m_bIsInitialized);
 
 	// Filter sinogram
-	CFloat32ProjectionData2D filteredSinogram(m_pSinogram->getGeometry(), m_pSinogram->getData());
-	performFiltering(&filteredSinogram);
+	CFloat32ProjectionData2D *filteredSinogram = createCFloat32ProjectionData2DMemory(m_pSinogram->getGeometry());
+	filteredSinogram->copyData(*m_pSinogram);
+	performFiltering(filteredSinogram);
 
 	// Back project
 	m_pReconstruction->setData(0.0f);
 	projectData(m_pProjector,
-	            DefaultBPPolicy(m_pReconstruction, &filteredSinogram));
+	            DefaultBPPolicy(m_pReconstruction, filteredSinogram));
+
+	delete filteredSinogram;
+	filteredSinogram = nullptr;
 
 	// Scale data
 	const CVolumeGeometry2D& volGeom = m_pProjector->getVolumeGeometry();
@@ -186,8 +174,6 @@ bool CFilteredBackProjectionAlgorithm::run(int _iNrIterations)
 	int iAngleCount = projGeom.getProjectionAngleCount();
 	float fPixelArea = volGeom.getPixelArea();
 	(*m_pReconstruction) *= PI/(2*iAngleCount*fPixelArea);
-
-	m_pReconstruction->updateStatistics();
 
 	return true;
 }
@@ -282,7 +268,7 @@ void CFilteredBackProjectionAlgorithm::performFiltering(CFloat32ProjectionData2D
 	// Copy and zero-pad data
 	for (int iAngle = 0; iAngle < iAngleCount; ++iAngle) {
 		float32* pfRow = pf + iAngle * 2 * zpDetector;
-		float32* pfDataRow = _pFilteredSinogram->getData() + iAngle * iDetectorCount;
+		float32* pfDataRow = _pFilteredSinogram->getFloat32Memory() + iAngle * iDetectorCount;
 		for (int iDetector = 0; iDetector < iDetectorCount; ++iDetector) {
 			pfRow[2*iDetector] = pfDataRow[iDetector];
 			pfRow[2*iDetector+1] = 0.0f;
@@ -340,7 +326,7 @@ void CFilteredBackProjectionAlgorithm::performFiltering(CFloat32ProjectionData2D
 	// Copy data back
 	for (int iAngle = 0; iAngle < iAngleCount; ++iAngle) {
 		float32* pfRow = pf + iAngle * 2 * zpDetector;
-		float32* pfDataRow = _pFilteredSinogram->getData() + iAngle * iDetectorCount;
+		float32* pfDataRow = _pFilteredSinogram->getFloat32Memory() + iAngle * iDetectorCount;
 		for (int iDetector = 0; iDetector < iDetectorCount; ++iDetector)
 			pfDataRow[iDetector] = pfRow[2*iDetector] / zpDetector;
 	}

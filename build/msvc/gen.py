@@ -35,12 +35,26 @@ CUDA_CC = {
   (12,5): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_90,compute_90",
   (12,8): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_100,sm_100;compute_101,sm_101;compute_120,sm_120;compute_120,compute_120",
   (12,9): "compute_50,sm_50;compute_60,sm_60;compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_100,sm_100;compute_101,sm_101;compute_120,sm_120;compute_120,compute_120",
+  (13,0): "compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_100,sm_100;compute_120,sm_120;compute_120,compute_120",
+  (13,1): "compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;compute_87,sm_87;compute_89,sm_89;compute_90,sm_90;compute_100,sm_100;compute_120,sm_120;compute_120,compute_120",
 }
 
-def create_mex_project(name, uuid14):
-    return { "type": vcppguid, "name": name, "file14": name + "_vc14.vcxproj", "uuid14": uuid14, "files": [] }
+TOOLSET= {
+  "vs2017": "v141",
+  "vs2019": "v142",
+  "vs2022": "v143",
+}
 
-P_astra = { "type": vcppguid, "name": "astra_vc14", "file14": "astra_vc14.vcxproj", "uuid14": "DABD9D82-609E-4C71-B1CA-A41B07495290" }
+SDK = {
+  "vs2017": "10.0.22621.0",
+  "vs2019": "10.0.26100.0",
+  "vs2022": "10.0.26100.0"
+}
+
+def create_mex_project(name, uuid):
+    return { "type": vcppguid, "name": name, "file": name + ".vcxproj", "uuid": uuid, "files": [] }
+
+P_astra = { "type": vcppguid, "name": "astra", "file": "astra.vcxproj", "uuid": "DABD9D82-609E-4C71-B1CA-A41B07495290" }
 
 P0 = create_mex_project("astra_mex", "6FDF72C4-A855-4F1C-A401-6500040B5E28")
 
@@ -55,8 +69,8 @@ P8 = create_mex_project("astra_mex_direct", "47460476-912B-4313-8B10-BDF1D60A84C
 
 F_astra_mex = { "type": siguid,
                 "name": "astra_mex",
-                "file14": "astra_mex",
-                "uuid14": "2076FB73-ECFE-4B1B-9A8C-E351C500FAAB",
+                "file": "astra_mex",
+                "uuid": "2076FB73-ECFE-4B1B-9A8C-E351C500FAAB",
                 "entries": [ P0, P1, P2, P3, P4, P5, P6, P7, P8 ] }
 
 
@@ -171,25 +185,22 @@ P_astra["filters"]["Global &amp; Other"] = [ "72fbe846-10ef-4c52-88df-13bd66c4cb
 P_astra["filters"]["Geometries"] = [ "7ef37c12-c98c-4dd6-938d-12f49279eae0" ]
 P_astra["filters"]["CUDA\\cuda source"] = [
 "04a878ed-77b4-4525-9bc2-38ccd65282c5",
-"cuda\\2d\\algo.cu",
+"cuda\\dlpack_support.cu",
+"cuda\\stream.cu",
 "cuda\\2d\\arith.cu",
 "cuda\\2d\\astra.cu",
-"cuda\\2d\\cgls.cu",
 "cuda\\2d\\darthelper.cu",
-"cuda\\2d\\em.cu",
 "cuda\\2d\\fan_bp.cu",
 "cuda\\2d\\fan_fp.cu",
 "cuda\\2d\\fbp.cu",
 "cuda\\2d\\fft.cu",
+"cuda\\2d\\mem2d.cu",
 "cuda\\2d\\par_bp.cu",
 "cuda\\2d\\par_fp.cu",
 "cuda\\2d\\sart.cu",
-"cuda\\2d\\sirt.cu",
 "cuda\\2d\\util.cu",
-"cuda\\3d\\algo3d.cu",
 "cuda\\3d\\arith3d.cu",
 "cuda\\3d\\astra3d.cu",
-"cuda\\3d\\cgls3d.cu",
 "cuda\\3d\\cone_bp.cu",
 "cuda\\3d\\cone_fp.cu",
 "cuda\\3d\\cone_cyl.cu",
@@ -199,7 +210,6 @@ P_astra["filters"]["CUDA\\cuda source"] = [
 "cuda\\3d\\mem3d.cu",
 "cuda\\3d\\par3d_bp.cu",
 "cuda\\3d\\par3d_fp.cu",
-"cuda\\3d\\sirt3d.cu",
 "cuda\\3d\\util3d.cu",
 ]
 P_astra["filters"]["Algorithms\\source"] = [
@@ -218,11 +228,8 @@ P_astra["filters"]["Algorithms\\source"] = [
 ]
 P_astra["filters"]["Data Structures\\source"] = [
 "95346487-8185-487b-a794-3e7fb5fcbd4c",
+"src\\Data2D.cpp",
 "src\\Data3D.cpp",
-"src\\Float32Data.cpp",
-"src\\Float32Data2D.cpp",
-"src\\Float32ProjectionData2D.cpp",
-"src\\Float32VolumeData2D.cpp",
 "src\\SheppLogan.cpp",
 "src\\SparseMatrix.cpp",
 ]
@@ -237,7 +244,6 @@ P_astra["filters"]["Global &amp; Other\\source"] = [
 "src\\Fourier.cpp",
 "src\\Globals.cpp",
 "src\\Logging.cpp",
-"src\\PlatformDepSystemCode.cpp",
 "src\\Utilities.cpp",
 "src\\XMLConfig.cpp",
 "src\\XMLDocument.cpp",
@@ -305,26 +311,24 @@ P_astra["filters"]["CUDA\\astra source"] = [
 ]
 P_astra["filters"]["CUDA\\cuda headers"] = [
 "4e17872e-db7d-41bc-9760-fad1c253b583",
-"include\\astra\\cuda\\2d\\algo.h",
+"include\\astra\\cuda\\dlpack_support.h",
+"include\\astra\\cuda\\stream.h",
+"include\\astra\\cuda\\stream_internal.h",
 "include\\astra\\cuda\\2d\\arith.h",
 "include\\astra\\cuda\\2d\\astra.h",
-"include\\astra\\cuda\\2d\\cgls.h",
 "include\\astra\\cuda\\2d\\darthelper.h",
 "include\\astra\\cuda\\2d\\dims.h",
-"include\\astra\\cuda\\2d\\em.h",
 "include\\astra\\cuda\\2d\\fan_bp.h",
 "include\\astra\\cuda\\2d\\fan_fp.h",
 "include\\astra\\cuda\\2d\\fbp.h",
 "include\\astra\\cuda\\2d\\fft.h",
+"include\\astra\\cuda\\2d\\mem2d.h",
 "include\\astra\\cuda\\2d\\par_bp.h",
 "include\\astra\\cuda\\2d\\par_fp.h",
 "include\\astra\\cuda\\2d\\sart.h",
-"include\\astra\\cuda\\2d\\sirt.h",
 "include\\astra\\cuda\\2d\\util.h",
-"include\\astra\\cuda\\3d\\algo3d.h",
 "include\\astra\\cuda\\3d\\arith3d.h",
 "include\\astra\\cuda\\3d\\astra3d.h",
-"include\\astra\\cuda\\3d\\cgls3d.h",
 "include\\astra\\cuda\\3d\\cone_bp.h",
 "include\\astra\\cuda\\3d\\cone_fp.h",
 "include\\astra\\cuda\\3d\\cone_cyl.h",
@@ -332,9 +336,9 @@ P_astra["filters"]["CUDA\\cuda headers"] = [
 "include\\astra\\cuda\\3d\\dims3d.h",
 "include\\astra\\cuda\\3d\\fdk.h",
 "include\\astra\\cuda\\3d\\mem3d.h",
+"include\\astra\\cuda\\3d\\mem3d_internal.h",
 "include\\astra\\cuda\\3d\\par3d_bp.h",
 "include\\astra\\cuda\\3d\\par3d_fp.h",
-"include\\astra\\cuda\\3d\\sirt3d.h",
 "include\\astra\\cuda\\3d\\util3d.h",
 ]
 P_astra["filters"]["Algorithms\\headers"] = [
@@ -356,11 +360,9 @@ P_astra["filters"]["Algorithms\\headers"] = [
 ]
 P_astra["filters"]["Data Structures\\headers"] = [
 "444c44b0-6454-483a-be26-7cb9c8ab0b98",
+"include\\astra\\Data.h",
+"include\\astra\\Data2D.h",
 "include\\astra\\Data3D.h",
-"include\\astra\\Float32Data.h",
-"include\\astra\\Float32Data2D.h",
-"include\\astra\\Float32ProjectionData2D.h",
-"include\\astra\\Float32VolumeData2D.h",
 "include\\astra\\SheppLogan.h",
 "include\\astra\\SparseMatrix.h",
 ]
@@ -376,7 +378,6 @@ P_astra["filters"]["Global &amp; Other\\headers"] = [
 "include\\astra\\Fourier.h",
 "include\\astra\\Globals.h",
 "include\\astra\\Logging.h",
-"include\\astra\\PlatformDepSystemCode.h",
 "include\\astra\\Singleton.h",
 "include\\astra\\TypeList.h",
 "include\\astra\\Utilities.h",
@@ -502,18 +503,18 @@ configs = [ Configuration(a,b) for a in [ True, False ] for b in [ True, False ]
 
 def write_sln():
   main_project = P_astra
-  F = open("astra_vc14.sln", "w", encoding="utf-8")
+  F = open("astra.sln", "w", encoding="utf-8")
   print(bom, file=F)
   print("Microsoft Visual Studio Solution File, Format Version 12.00", file=F)
   print("# Visual Studio 14", file=F)
   print("VisualStudioVersion = 14.0.25420.1", file=F)
   print("MinimumVisualStudioVersion = 10.0.40219.1", file=F)
   for p in projects:
-    s = '''Project("{%s}") = "%s", "projects\\%s", "{%s}"''' % (p["type"], p["name"], p["file14"], p["uuid14"])
+    s = '''Project("{%s}") = "%s", "projects\\%s", "{%s}"''' % (p["type"], p["name"], p["file"], p["uuid"])
     print(s, file=F)
     if "mex" in p["name"]:
       print("\tProjectSection(ProjectDependencies) = postProject", file=F)
-      print("\t\t{%s} = {%s}" % (main_project["uuid14"], main_project["uuid14"]), file=F)
+      print("\t\t{%s} = {%s}" % (main_project["uuid"], main_project["uuid"]), file=F)
       print("\tEndProjectSection", file=F)
     print("EndProject", file=F)
   print("Global", file=F)
@@ -526,8 +527,8 @@ def write_sln():
     if "entries" in p:
       continue
     for c in configs:
-      print("\t\t{" + p["uuid14"] + "}." + c.name() + ".ActiveCfg = " + c.name(), file=F)
-      print("\t\t{" + p["uuid14"] + "}." + c.name() + ".Build.0 = " + c.name(), file=F)
+      print("\t\t{" + p["uuid"] + "}." + c.name() + ".ActiveCfg = " + c.name(), file=F)
+      print("\t\t{" + p["uuid"] + "}." + c.name() + ".Build.0 = " + c.name(), file=F)
   print("\tEndGlobalSection", file=F)
   print("\tGlobalSection(SolutionProperties) = preSolution", file=F)
   print("\t\tHideSolutionNode = FALSE", file=F)
@@ -537,12 +538,12 @@ def write_sln():
     if "entries" not in p:
       continue
     for e in p["entries"]:
-      print("\t\t{" + e["uuid14"] + "} = {" + p["uuid14"] + "}", file=F)
+      print("\t\t{" + e["uuid"] + "} = {" + p["uuid"] + "}", file=F)
   print("\tEndGlobalSection", file=F)
   print("EndGlobal", file=F)
   F.close()
 
-def write_project14_start(P, F):
+def write_project_start(P, vs_version, F):
   print(bom + '<?xml version="1.0" encoding="utf-8"?>', file=F)
   print('<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">', file=F)
   print('  <ItemGroup Label="ProjectConfigurations">', file=F)
@@ -555,12 +556,12 @@ def write_project14_start(P, F):
   print('  <PropertyGroup Label="Globals">', file=F)
   if 'mex' in P["name"]:
     print('    <ProjectName>' + P["name"] + '</ProjectName>', file=F)
-  print('    <ProjectGuid>{' + P["uuid14"] + '}</ProjectGuid>', file=F)
+  print('    <ProjectGuid>{' + P["uuid"] + '}</ProjectGuid>', file=F)
   if 'mex' in P["name"]:
     print('    <RootNamespace>astraMatlab</RootNamespace>', file=F)
   else:
     print('    <RootNamespace>' + P["name"] + '</RootNamespace>', file=F)
-  print('    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>', file=F)
+  print('    <WindowsTargetPlatformVersion>' + SDK[vs_version] + '</WindowsTargetPlatformVersion>', file=F)
   print('  </PropertyGroup>', file=F)
   print('  <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />', file=F)
   for c in configs:
@@ -571,7 +572,7 @@ def write_project14_start(P, F):
         print('    <UseDebugLibraries>true</UseDebugLibraries>', file=F)
       else:
         print('    <UseDebugLibraries>false</UseDebugLibraries>', file=F)
-    print('    <PlatformToolset>v141</PlatformToolset>', file=F)
+    print('    <PlatformToolset>' + TOOLSET[vs_version] + '</PlatformToolset>', file=F)
     if 'mex' not in P["name"]:
       if not c.debug:
         print('    <WholeProgramOptimization>true</WholeProgramOptimization>', file=F)
@@ -588,7 +589,7 @@ def write_project14_start(P, F):
     print('''  </ImportGroup>''', file=F)
   print('  <PropertyGroup Label="UserMacros" />', file=F)
 
-def write_project14_end(P, F):
+def write_project_end(P, F):
   relpath = '..\\..\\..\\'
   if 'mex' in P["name"]:
       relpath += 'matlab\\mex\\'
@@ -635,10 +636,10 @@ def write_project14_end(P, F):
   print('</Project>', end="", file=F)
 
 
-def write_main_project14():
+def write_main_project(vs_version):
   P = P_astra;
-  F = open(os.path.join("projects", P["file14"]), "w", encoding="utf-8")
-  write_project14_start(P, F)
+  F = open(os.path.join("projects", P["file"]), "w", encoding="utf-8")
+  write_project_start(P, vs_version, F)
   for c in configs:
     print('''  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='%s'">''' % (c.name(), ), file=F)
     print('    <OutDir>..\\bin\\$(Platform)\\$(Configuration)\\</OutDir>', file=F)
@@ -672,6 +673,7 @@ def write_main_project14():
       d+="ASTRA_CUDA;ASTRA_BUILDING_CUDA;"
     d+="__SSE2__;"
     d+="DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;"
+    d+="_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;"  # FIXME: Check if still need in Matlab versions later than 2023b
     d+='%(PreprocessorDefinitions)</PreprocessorDefinitions>'
     print(d, file=F)
     print('      <MultiProcessorCompilation>true</MultiProcessorCompilation>', file=F)
@@ -698,16 +700,16 @@ def write_main_project14():
       print('      <TargetMachinePlatform>64</TargetMachinePlatform>', file=F)
       print('      <GenerateLineInfo>true</GenerateLineInfo>', file=F)
       print(f'      <CodeGeneration>{CUDA_CC[(CUDA_MAJOR,CUDA_MINOR)]}</CodeGeneration>', file=F)
-      print('      <AdditionalOptions>-std=c++17</AdditionalOptions>', file=F)
+      print('      <AdditionalOptions>-std=c++17 -diag-suppress=1394 -Wno-deprecated-gpu-targets</AdditionalOptions>', file=F)
       print('      <AdditionalCompilerOptions>/std:c++17</AdditionalCompilerOptions>', file=F)
       print('    </CudaCompile>', file=F)
     print('  </ItemDefinitionGroup>', file=F)
-  write_project14_end(P, F)
+  write_project_end(P, F)
   F.close()
 
-def write_mex_project14(P):
-  F = open(os.path.join("projects", P["name"] + "_vc14.vcxproj"), "w", encoding="utf-8")
-  write_project14_start(P, F)
+def write_mex_project(P, vs_version):
+  F = open(os.path.join("projects", P["name"] + ".vcxproj"), "w", encoding="utf-8")
+  write_project_start(P, vs_version, F)
   print('  <PropertyGroup>', file=F)
   print('    <_ProjectFileVersion>11.0.60610.1</_ProjectFileVersion>', file=F)
   print('  </PropertyGroup>', file=F)
@@ -727,8 +729,7 @@ def write_mex_project14(P):
       print('      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>', file=F)
 #    print('      <WarningLevel>Level3</WarningLevel>', file=F)
     #print('      <AdditionalIncludeDirectories>$(MATLAB_ROOT)\\extern\\include\\;..\\..\\lib\\include;..\\..\\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>', file=F)
-    # FIXME: This CUDA_PATH shouldn't be necessary
-    print('      <AdditionalIncludeDirectories>$(MATLAB_ROOT)\\extern\\include\\;$(CUDA_PATH)\\include;..\\..\\..\\lib\\include;..\\..\\..\\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>', file=F)
+    print('      <AdditionalIncludeDirectories>$(MATLAB_ROOT)\\extern\\include\\;..\\..\\..\\lib\\include;..\\..\\..\\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>', file=F)
     print('      <OpenMPSupport>true</OpenMPSupport>', file=F)
     if c.debug:
       print('      <Optimization>Disabled</Optimization>', file=F)
@@ -743,6 +744,7 @@ def write_mex_project14(P):
       d+="ASTRA_CUDA;ASTRA_BUILDING_CUDA;"
     d+="__SSE2__;"
     d+="MATLAB_MEXCMD_RELEASE=700;"
+    d+="_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;"  # FIXME: Check if still need in Matlab versions later than 2023b
 #    d+="DLL_EXPORTS;_CRT_SECURE_NO_WARNINGS;"
     d+='%(PreprocessorDefinitions)</PreprocessorDefinitions>'
     print(d, file=F)
@@ -769,10 +771,10 @@ def write_mex_project14(P):
     print('      <GenerateDebugInformation>true</GenerateDebugInformation>', file=F)
     print('    </Link>', file=F)
     print('  </ItemDefinitionGroup>', file=F)
-  write_project14_end(P, F)
+  write_project_end(P, F)
   F.close()
 
-def write_main_filters14():
+def write_main_filters():
   P = P_astra
   F = open(os.path.join("projects", P["name"] + ".vcxproj.filters"), "w", encoding="utf-8")
   print(bom + '<?xml version="1.0" encoding="utf-8"?>', file=F)
@@ -835,11 +837,11 @@ def check_cuda_version(ver):
     pass
   return False
 
-if (len(sys.argv) != 2) or not check_cuda_version(sys.argv[1]):
-  print("Usage: python gen.py [10.2|11.0|...]", file=sys.stderr)
+if (len(sys.argv) != 3) or (sys.argv[1] not in ["vs2017", "vs2019", "vs2022"]) or not check_cuda_version(sys.argv[2]):
+  print("Usage: python gen.py [vs2017|vs2019|vs2022] [11.1|12.0|...]", file=sys.stderr)
   sys.exit(1)
 
-CUDA_MAJOR, CUDA_MINOR = parse_cuda_version(sys.argv[1])
+CUDA_MAJOR, CUDA_MINOR = parse_cuda_version(sys.argv[2])
 
 try:
   open("../../src/AstraObjectManager.cpp", "r")
@@ -851,14 +853,14 @@ except IOError:
 os.makedirs("projects", exist_ok=True)
 
 write_sln()
-write_main_project14()
-write_main_filters14()
-write_mex_project14(P0)
-write_mex_project14(P1)
-write_mex_project14(P2)
-write_mex_project14(P3)
-write_mex_project14(P4)
-write_mex_project14(P5)
-write_mex_project14(P6)
-write_mex_project14(P7)
-write_mex_project14(P8)
+write_main_project(sys.argv[1])
+write_main_filters()
+write_mex_project(P0, sys.argv[1])
+write_mex_project(P1, sys.argv[1])
+write_mex_project(P2, sys.argv[1])
+write_mex_project(P3, sys.argv[1])
+write_mex_project(P4, sys.argv[1])
+write_mex_project(P5, sys.argv[1])
+write_mex_project(P6, sys.argv[1])
+write_mex_project(P7, sys.argv[1])
+write_mex_project(P8, sys.argv[1])

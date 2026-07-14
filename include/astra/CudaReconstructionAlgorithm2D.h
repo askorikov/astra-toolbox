@@ -34,8 +34,9 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "ReconstructionAlgorithm2D.h"
 
 #include "Projector2D.h"
-#include "Float32ProjectionData2D.h"
-#include "Float32VolumeData2D.h"
+#include "Data2D.h"
+
+#include "astra/cuda/2d/dims.h"
 
 namespace astraCUDA {
 class ReconAlgo;
@@ -62,36 +63,12 @@ public:
 	 */
 	virtual bool initialize(const Config& _cfg);
 
-	/** Clear this class.
-	 */
-	virtual void clear();
-
-	/** Get a description of the class.
-	 *
-	 * @return description string
-	 */
-	virtual std::string description() const;
-
-	/** Get the norm of the residual image.
-	 *  Only a few algorithms support this method.
-	 *
-	 * @param _fNorm if supported, the norm is returned here
-	 * @return true if this operation is supported
-	 */
-	virtual bool getResidualNorm(float32& _fNorm);
-
 	/**  
 	 * Sets the index of the used GPU index: first GPU has index 0
 	 *
 	 * @param _iGPUIndex New GPU index.
 	 */
 	void setGPUIndex(int _iGPUIndex);
-
-	/** Perform a number of iterations.
-	 *
-	 * @param _iNrIterations amount of iterations to perform.
-	 */
-	virtual bool run(int _iNrIterations = 0);
 
 protected:
 	CCudaReconstructionAlgorithm2D();
@@ -101,10 +78,6 @@ protected:
 	 * @return object initialized
 	 */
 	bool _check();
-
-	/** Initial clearing. Only to be used by constructors.
-	 */
-	void _clear();
 
 	/** Initialize class. For internal use only.
 	 */
@@ -117,26 +90,17 @@ protected:
 	 */
 	bool setupGeometry();
 
-	/** Initialize CUDA algorithm. For internal use only.
-	 */
-	virtual void initCUDAAlgorithm();
+	astraCUDA::SProjectorParams2D m_params;
+	Geometry2DParameters m_geometry;
 
-	/** The internally used CUDA algorithm object
-	 */ 
-	astraCUDA::ReconAlgo *m_pAlgo;
-
-	int m_iDetectorSuperSampling;
-	int m_iPixelSuperSampling;
 	int m_iGPUIndex;
-
-	bool m_bAlgoInit;
 
 	void initializeFromProjector();
 	virtual bool requiresProjector() const { return false; }
-};
 
-// inline functions
-inline std::string CCudaReconstructionAlgorithm2D::description() const { return "2D CUDA Reconstruction Algorithm"; };
+	bool callFP(const CData2D *D_vol, CData2D *D_proj, float fScale);
+	bool callBP(CData2D *D_vol, const CData2D *D_proj, float fScale);
+};
 
 } // end namespace
 

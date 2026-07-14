@@ -30,6 +30,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/CudaBackProjectionAlgorithm.h"
 
 #include "astra/cuda/2d/astra.h"
+#include "astra/cuda/2d/mem2d.h"
 
 using namespace std;
 
@@ -39,21 +40,22 @@ namespace astra {
 // Constructor
 CCudaBackProjectionAlgorithm::CCudaBackProjectionAlgorithm() 
 {
-	m_bIsInitialized = false;
-	CCudaReconstructionAlgorithm2D::_clear();
+
 }
 
 //----------------------------------------------------------------------------------------
 // Destructor
 CCudaBackProjectionAlgorithm::~CCudaBackProjectionAlgorithm() 
 {
-	// The actual work is done by ~CCudaReconstructionAlgorithm2D
+
 }
 
 //---------------------------------------------------------------------------------------
 // Initialize - Config
 bool CCudaBackProjectionAlgorithm::initialize(const Config& _cfg)
 {
+	assert(!m_bIsInitialized);
+
 	ConfigReader<CAlgorithm> CR("CudaBackProjectionAlgorithm", this, _cfg);
 
 	m_bIsInitialized = CCudaReconstructionAlgorithm2D::initialize(_cfg);
@@ -61,27 +63,83 @@ bool CCudaBackProjectionAlgorithm::initialize(const Config& _cfg)
 	if (!m_bIsInitialized)
 		return false;
 
-	m_pAlgo = new BPalgo();
-	m_bAlgoInit = false;
-
 	return true;
 }
 
 //---------------------------------------------------------------------------------------
 // Initialize - C++
 bool CCudaBackProjectionAlgorithm::initialize(CProjector2D* _pProjector,
-                                     CFloat32ProjectionData2D* _pSinogram, 
-                                     CFloat32VolumeData2D* _pReconstruction)
+                                              CFloat32ProjectionData2D* _pSinogram, 
+                                              CFloat32VolumeData2D* _pReconstruction)
 {
+	assert(!m_bIsInitialized);
+
 	m_bIsInitialized = CCudaReconstructionAlgorithm2D::initialize(_pProjector, _pSinogram, _pReconstruction);
 
 	if (!m_bIsInitialized)
 		return false;
 
-	m_pAlgo = new BPalgo();
-	m_bAlgoInit = false;
-
 	return true;
+}
+
+bool CCudaBackProjectionAlgorithm::run(int /*_iNrIterations*/)
+{
+	assert(m_bIsInitialized);
+
+	bool ok = true;
+
+	std::array<int, 2> volDims = m_pReconstruction->getShape();
+	std::array<int, 2> projDims = m_pSinogram->getShape();
+
+	if (m_iGPUIndex != -1)
+		astraCUDA::setGPUIndex(m_iGPUIndex);
+
+	CDataStorage *s;
+	s = astraCUDA::allocateGPUMemory(volDims[0], volDims[1], astraCUDA::INIT_ZERO);
+	if (!s) {
+		return false;
+	}
+	CData2D *D_volData = new CData2D(volDims[0], volDims[1], s);
+
+	s = astraCUDA::allocateGPUMemory(projDims[0], projDims[1], astraCUDA::INIT_NO);
+	if (!s) {
+		astraCUDA::freeGPUMemory(D_volData);
+		delete D_volData;
+		return false;
+	}
+	CData2D *D_projData = new CData2D(projDims[0], projDims[1], s);
+
+	if (m_pSinogram->isFloat32Memory()) {
+		ok &= astraCUDA::copyToGPUMemory(m_pSinogram, D_projData);
+	} else if (m_pSinogram->isFloat32GPU()) {
+		// TODO: re-use memory instead of copying
+		// (need to ensure everything works when pitches are not consistent)
+		ok &= astraCUDA::assignGPUMemory(D_projData, m_pSinogram);
+	} else {
+		ok = false;
+	}
+
+	if (ok)
+		ok &= callBP(D_volData, D_projData, 1.0f);
+
+	if (ok) {
+		if (m_pReconstruction->isFloat32Memory()) {
+			ok &= astraCUDA::copyFromGPUMemory(m_pReconstruction, D_volData);
+		} else if (m_pReconstruction->isFloat32GPU()) {
+			// TODO: re-use memory instead of copying
+			// (need to ensure everything works when pitches are not consistent)
+			ok &= astraCUDA::assignGPUMemory(m_pReconstruction, D_volData);
+		} else {
+			ok = false;
+		}
+	}
+
+	astraCUDA::freeGPUMemory(D_volData);
+	astraCUDA::freeGPUMemory(D_projData);
+	delete D_volData;
+	delete D_projData;
+
+	return ok;
 }
 
 

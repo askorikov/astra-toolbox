@@ -31,7 +31,6 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 
 #include "astra/cuda/2d/astra.h"
 #include "astra/cuda/2d/darthelper.h"
-#include "astra/cuda/2d/algo.h"
 
 #include "astra/AstraObjectManager.h"
 
@@ -109,7 +108,7 @@ bool CCudaDartMaskAlgorithm::run(int _iNrIterations)
 	unsigned int height = volgeom.getGridRowCount();
 
 	astraCUDA::setGPUIndex(m_iGPUIndex);
-	astraCUDA::dartMask(m_pMask->getData(), m_pSegmentation->getDataConst(), m_iConn, m_iRadius, m_iThreshold, width, height);
+	astraCUDA::dartMask(m_pMask->getFloat32Memory(), m_pSegmentation->getFloat32Memory(), m_iConn, m_iRadius, m_iThreshold, width, height);
 
 	return true;
 }

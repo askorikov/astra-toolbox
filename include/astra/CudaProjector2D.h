@@ -31,7 +31,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #ifdef ASTRA_CUDA
 
 #include "ParallelProjectionGeometry2D.h"
-#include "Float32Data2D.h"
+#include "Data2D.h"
 #include "Projector2D.h"
 #include "cuda/2d/astra.h"
 
@@ -46,11 +46,6 @@ namespace astra
 class _AstraExport CCudaProjector2D : public CProjector2D {
 
 protected:
-	
-	/** Initial clearing. Only to be used by constructors.
-	 */
-	virtual void _clear();
-
 	/** Check the values of this object.  If everything is ok, the object can be set to the initialized state.
 	 * The following statements are then guaranteed to hold:
 	 * - no NULL pointers
@@ -84,11 +79,6 @@ public:
 	 * @return initialization successful?
 	 */
 	virtual bool initialize(const Config& _cfg);
-
-	/** Clear this class.
-	 */
-	virtual void clear();
-
 
 	virtual int getProjectionWeightsCount(int _iProjectionIndex) { return 0; }
 

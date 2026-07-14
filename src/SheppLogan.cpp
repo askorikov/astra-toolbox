@@ -26,7 +26,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "astra/SheppLogan.h"
-#include "astra/Float32VolumeData2D.h"
+#include "astra/Data2D.h"
 #include "astra/Data3D.h"
 
 namespace astra {
@@ -185,6 +185,8 @@ static void add_ellipsoid(T *data, unsigned int width, unsigned int height, unsi
 
 
 void generateSheppLogan(CFloat32VolumeData2D *data, bool modified) {
+	ASTRA_ASSERT(data->isFloat32Memory());
+
    	std::vector<Ellipse> ells = {
 	//x,    y,      axisx,   axisy,rot, value
  	{ 0,    0,      0.69,   0.92,   0,  2 },
@@ -206,7 +208,7 @@ void generateSheppLogan(CFloat32VolumeData2D *data, bool modified) {
 			ells[i].value = modvalues[i];
 	}
 
-	float32 *ptr = data->getData();
+	float32 *ptr = data->getFloat32Memory();
 
 	for (size_t i = 0; i < data->getSize(); ++i)
 		ptr[i] = 0.0f;

@@ -60,7 +60,7 @@ BOOSTUTF_LIBS=@LIBS_BOOSTUTF@
 
 ifeq ($(cuda),yes)
 CPPFLAGS  += @CPPFLAGS_CUDA@ -DASTRA_CUDA
-NVCCFLAGS += @NVCCFLAGS_EXTRA@ @CPPFLAGS_CUDA@ -I$(srcdir)/../../include -DASTRA_CUDA --std c++17 -DASTRA_BUILDING_CUDA
+NVCCFLAGS += @NVCCFLAGS_EXTRA@ @CPPFLAGS_CUDA@ -I$(srcdir)/../../include -I$(srcdir)/../../lib/include -DASTRA_CUDA --std c++17 -DASTRA_BUILDING_CUDA
 LDFLAGS   += @LDFLAGS_CUDA@
 LIBS      += -lcudart -lcufft
 NVCC       = @NVCC@
@@ -69,7 +69,7 @@ endif
 ifeq ($(amdhip),yes)
 CPPFLAGS   += @CPPFLAGS_HIP@ -DASTRA_CUDA
 # TODO: Check these warnings
-HIPCCFLAGS += @CPPFLAGS_HIP@ -I$(srcdir)/../../include -DASTRA_CUDA --std c++17 -DASTRA_BUILDING_HIP -Wno-unused-result -Wno-inconsistent-missing-override -Wno-absolute-value
+HIPCCFLAGS += @CPPFLAGS_HIP@ -I$(srcdir)/../../include -I$(srcdir)/../../lib/include -DASTRA_CUDA --std c++17 -DASTRA_BUILDING_HIP -Wno-absolute-value
 LDFLAGS    += @LDFLAGS_HIP@
 LIBS       += -lhipfft
 HIPCC       = @HIPCC@
@@ -93,7 +93,11 @@ endif
 # MODLDFLAGS are the base LDFLAGS for matlab, octave, python modules
 MODLDFLAGS=$(LDFLAGS) -L$(abs_top_builddir)/.libs
 ifeq ($(install_type),module)
+ifeq ($(macos),yes)
+MODLDFLAGS+=-Wl,-rpath,@loader_path
+else
 MODLDFLAGS+=-Wl,-rpath,'\$$ORIGIN'
+endif
 endif
 
 ifeq ($(python),yes)
@@ -116,6 +120,13 @@ MODPYLIBS=-l$(PYLIBVER)
 
 # ASTRA_CONFIG selection
 ifeq ($(install_type),module)
+ifeq ($(macos),yes)
+ifeq ($(cuda),yes)
+ASTRA_CONFIG = macos_module_cuda
+else
+ASTRA_CONFIG = macos_module
+endif
+else
 ifeq ($(cuda),yes)
 ASTRA_CONFIG = linux_module_cuda
 else
@@ -123,6 +134,7 @@ ifeq ($(amdhip),yes)
 ASTRA_CONFIG = linux_module_cuda
 else
 ASTRA_CONFIG = linux_module
+endif
 endif
 endif
 else
@@ -192,6 +204,7 @@ BASE_OBJECTS=\
 	src/ConeVecProjectionGeometry3D.lo \
 	src/CylConeVecProjectionGeometry3D.lo \
 	src/Config.lo \
+	src/Data2D.lo \
 	src/Data3D.lo \
 	src/DataProjector.lo \
 	src/DataProjectorPolicies.lo \
@@ -202,10 +215,6 @@ BASE_OBJECTS=\
 	src/Features.lo \
 	src/FilteredBackProjectionAlgorithm.lo \
 	src/Filters.lo \
-	src/Float32Data.lo \
-	src/Float32Data2D.lo \
-	src/Float32ProjectionData2D.lo \
-	src/Float32VolumeData2D.lo \
 	src/ForwardProjectionAlgorithm.lo \
 	src/Fourier.lo \
 	src/GeometryUtil2D.lo \
@@ -221,7 +230,6 @@ BASE_OBJECTS=\
 	src/ParallelVecProjectionGeometry2D.lo \
 	src/ParallelProjectionGeometry3D.lo \
 	src/ParallelVecProjectionGeometry3D.lo \
-	src/PlatformDepSystemCode.lo \
 	src/PluginAlgorithmFactory.lo \
 	src/ProjectionGeometry2D.lo \
 	src/ProjectionGeometry2DFactory.lo \
@@ -266,24 +274,21 @@ CUDA_CXX_OBJECTS=\
 	src/CudaForwardProjectionAlgorithm3D.lo
 
 CUDA_OBJECTS=\
-	cuda/2d/algo.lo \
+	cuda/dlpack_support.lo \
+	cuda/stream.lo \
 	cuda/2d/par_fp.lo \
 	cuda/2d/par_bp.lo \
 	cuda/2d/fan_fp.lo \
 	cuda/2d/fan_bp.lo \
 	cuda/2d/fbp.lo \
-	cuda/2d/sirt.lo \
 	cuda/2d/sart.lo \
-	cuda/2d/cgls.lo \
-	cuda/2d/em.lo \
 	cuda/2d/astra.lo \
 	cuda/2d/util.lo \
 	cuda/2d/arith.lo \
 	cuda/2d/fft.lo \
 	cuda/2d/darthelper.lo \
+	cuda/2d/mem2d.lo \
 	cuda/3d/darthelper3d.lo \
-	cuda/3d/algo3d.lo \
-	cuda/3d/cgls3d.lo \
 	cuda/3d/cone_fp.lo \
 	cuda/3d/cone_bp.lo \
 	cuda/3d/cone_cyl.lo \
@@ -291,7 +296,6 @@ CUDA_OBJECTS=\
 	cuda/3d/fdk.lo \
 	cuda/3d/par3d_fp.lo \
 	cuda/3d/par3d_bp.lo \
-	cuda/3d/sirt3d.lo \
 	cuda/3d/astra3d.lo \
 	cuda/3d/util3d.lo \
 	cuda/3d/arith3d.lo \
@@ -315,12 +319,9 @@ endif
 TEST_OBJECTS=\
 	tests/main.o \
 	tests/test_AstraObjectManager.o \
-	tests/test_Float32Data2D.o \
 	tests/test_VolumeGeometry2D.o \
 	tests/test_ParallelProjectionGeometry2D.o \
 	tests/test_FanFlatProjectionGeometry2D.o \
-	tests/test_Float32VolumeData2D.o \
-	tests/test_Float32ProjectionData2D.o \
 	tests/test_Fourier.o \
 	tests/test_XMLDocument.o
 
@@ -412,7 +413,6 @@ PYTHON_PYX=\
 	astra/utils.pxd
 
 PYTHON_SRC=\
-	astra/src/CFloat32CustomPython.h \
 	astra/src/dlpack.cpp \
 	astra/src/dlpack.h \
 	astra/src/PythonPluginAlgorithm.cpp \
@@ -421,26 +421,18 @@ PYTHON_SRC=\
 	astra/src/PythonPluginAlgorithm.h
 
 
-OBJECT_DIRS = src/ tests/ cuda/2d/ cuda/3d/ matlab/mex/ ./
+OBJECT_DIRS = src/ tests/ cuda/ cuda/2d/ cuda/3d/ matlab/mex/ ./
 DEPDIRS = $(addsuffix $(DEPDIR),$(OBJECT_DIRS))
 -include $(wildcard $(addsuffix /*.d,$(DEPDIRS)))
-LIBDIRS = $(addsuffix .libs,./ src/ cuda/2d/ cuda/3d/)
+LIBDIRS = $(addsuffix .libs,./ src/ cuda/ cuda/2d/ cuda/3d/)
 
-SONAME=$(shell . ${abs_top_builddir}/libastra.la; echo $$dlname)
+SONAME=`. ${abs_top_builddir}/libastra.la; echo $$dlname`
 
 ifeq ($(matlab),yes)
 mex: $(MATLAB_MEX)
 
 %.$(MEXSUFFIX): %.o $(MATLAB_CXX_OBJECTS) libastra.la
 	$(MEX) LDFLAGS="$(MEXLDFLAGS)" $(MEXFLAGS) $(LIBS) $(MEXLIBS) -lastra -output $* $*.o $(MATLAB_CXX_OBJECTS)
-ifeq ($(install_type),module)
-ifeq ($(macos),yes)
-	@# tell macOS dynamic loader to look in mex directory for libastra.0.dylib
-	@# CHECKME: some versions of otool return a two-line output for otool -DX?
-	@# (xcode 8.2.1 / macos 10.11.6 ?)
-	install_name_tool -change `otool -DX .libs/$(SONAME) | tail -n 1` @loader_path/$(SONAME) $@
-endif
-endif
 
 ifeq ($(python),yes)
 matlab/mex/astra_mex_plugin_c.$(MEXSUFFIX): matlab/mex/astra_mex_plugin_c.o $(MATLAB_CXX_OBJECTS) libastra.la
@@ -503,6 +495,13 @@ python-wheel-stamp: python-staging-stamp libastra.la
 
 libastra.la: $(ALL_OBJECTS)
 	./libtool --mode=link --tag=CXX $(LD) -rpath $(libdir) -o $@ $(LDFLAGS) $(LIBS) $+
+ifeq ($(install_type),module)
+ifeq ($(macos),yes)
+	@# On MacOS, make the library more relocatable by replacing the absolute
+	@# path in the library id that libtool forces.
+	install_name_tool -id @rpath/$(SONAME) .libs/$(SONAME)
+endif
+endif
 
 %.o: %.cpp
 	$(MKDIR) $(*D)/$(DEPDIR)

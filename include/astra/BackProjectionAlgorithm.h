@@ -35,8 +35,7 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "ReconstructionAlgorithm2D.h"
 
 #include "Projector2D.h"
-#include "Float32ProjectionData2D.h"
-#include "Float32VolumeData2D.h"
+#include "Data2D.h"
 
 #include "DataProjector.h"
 
@@ -57,15 +56,6 @@ namespace astra {
 class _AstraExport CBackProjectionAlgorithm : public CReconstructionAlgorithm2D {
 
 protected:
-
-	/** Init stuff
-	 */
-	virtual void _init();
-
-	/** Initial clearing. Only to be used by constructors.
-	 */
-	virtual void _clear();
-
 	/** Check the values of this object.  If everything is ok, the object can be set to the initialized state.
 	 * The following statements are then guaranteed to hold:
 	 * - valid projector
@@ -95,10 +85,6 @@ public:
 	/** Destructor. 
 	 */
 	virtual ~CBackProjectionAlgorithm();
-
-	/** Clear this class.
-	 */
-	virtual void clear();
 
 	/** Initialize the algorithm with a config object.
 	 *

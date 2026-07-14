@@ -23,7 +23,7 @@ dnl along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 dnl
 dnl -----------------------------------------------------------------------
 
-AC_INIT([astra],[2.4.1])
+AC_INIT([astra],[2.5.0])
 AC_CONFIG_SRCDIR([Makefile.in])
 LT_INIT([disable-static])
 
@@ -238,7 +238,7 @@ if test x"$with_matlab" != x; then
     MATLAB_ROOT="$with_matlab"
     AC_SUBST(MATLAB_ROOT)
     # TODO: maybe catch mex warnings
-    ASTRA_CHECK_MEX_SUFFIX([mexa64 mexglx mexmaci64 mexmaci],[MEXSUFFIX])
+    ASTRA_CHECK_MEX_SUFFIX([mexa64 mexglx mexmaci64 mexmaci mexmaca64],[MEXSUFFIX])
     if test x$MEXSUFFIX = x; then
       AC_MSG_FAILURE([Unable to determine matlab mex suffix])
       HAVEMATLAB=no
@@ -327,6 +327,13 @@ if test x"$with_python" != x -a x"$with_python" != xno; then
     AC_MSG_RESULT(no)
     AC_MSG_ERROR(You need the Cython module to install the ASTRA toolbox for Python)
   fi
+  ASTRA_CHECK_PYTHON_MODULE_VERSION(cython,[3.1],,HAVEPYTHON=no,)
+  # This version check could fail to work; we assume we have a good version in
+  # that case.
+  if test x$HAVEPYTHON = xno; then
+    AC_MSG_RESULT(not >= 3.1)
+    AC_MSG_ERROR(You need Cython >= 3.1 to install the ASTRA toolbox for Python)
+  fi
   AC_MSG_RESULT(yes)
   AC_MSG_CHECKING(for scipy module)
   ASTRA_TRY_PYTHON([import scipy],,HAVEPYTHON=no)
@@ -352,8 +359,8 @@ AC_SUBST(HAVEPYTHON)
 AC_CANONICAL_HOST
 case $host_os in
   darwin* )
-        CXXFLAGS_OS="-stdlib=libstdc++ -mmacosx-version-min=10.6"
-        LDFLAGS_OS="-stdlib=libstdc++"
+        CXXFLAGS_OS="-stdlib=libc++ -mmacosx-version-min=10.10"
+        LDFLAGS_OS="-stdlib=libc++"
         IS_MACOS=yes
         ;;
     *)

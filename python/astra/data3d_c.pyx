@@ -45,7 +45,7 @@ from .PyXMLDocument cimport XMLDocument
 
 from . cimport utils
 from .utils import wrap_from_bytes
-from .utils cimport linkVolFromGeometry, linkProjFromGeometry, createProjectionGeometry3D, createVolumeGeometry3D
+from .utils cimport linkVolFromGeometry3D, linkProjFromGeometry3D, createProjectionGeometry3D, createVolumeGeometry3D
 from .log import AstraError
 
 from .pythonutils import geom_size, GPULink
@@ -70,13 +70,13 @@ def create(datatype,geometry,data=None, link=False):
     if datatype == '-vol':
         pGeometry = createVolumeGeometry3D(geometry)
         if link:
-            pDataObject3D = linkVolFromGeometry(cython.operator.dereference(pGeometry), data)
+            pDataObject3D = linkVolFromGeometry3D(cython.operator.dereference(pGeometry), data)
         else:
             pDataObject3D = createCFloat32VolumeData3DMemory(move(pGeometry))
     elif datatype == '-sino' or datatype == '-proj3d' or datatype == '-sinocone':
         ppGeometry = createProjectionGeometry3D(geometry)
         if link:
-            pDataObject3D = linkProjFromGeometry(cython.operator.dereference(ppGeometry), data)
+            pDataObject3D = linkProjFromGeometry3D(cython.operator.dereference(ppGeometry), data)
         else:
             pDataObject3D = createCFloat32ProjectionData3DMemory(move(ppGeometry))
     else:
@@ -95,14 +95,17 @@ def get_geometry(i):
     cdef CData3D * pDataObject = getObject(i)
     cdef CFloat32ProjectionData3D * pDataObject2
     cdef CFloat32VolumeData3D * pDataObject3
+    cdef Config * cfg
     if pDataObject.getType() == THREEPROJECTION:
         pDataObject2 = <CFloat32ProjectionData3D * >pDataObject
-        geom = utils.configToDict(pDataObject2.getGeometry().getConfiguration())
+        cfg = pDataObject2.getGeometry().getConfiguration()
     elif pDataObject.getType() == THREEVOLUME:
         pDataObject3 = <CFloat32VolumeData3D * >pDataObject
-        geom = utils.configToDict(pDataObject3.getGeometry().getConfiguration())
+        cfg = pDataObject3.getGeometry().getConfiguration()
     else:
         raise AstraError("Not a known data object")
+    geom = utils.configToDict(cfg)
+    del cfg
     return geom
 
 def change_geometry(i, geom):
@@ -155,7 +158,7 @@ cdef fillDataObjectScalar(CData3D * obj, float s):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef fillDataObjectArray(CData3D* obj, const float [:,:,::1] data):
-    cdef const float [:,:,::1] cView = <const float[:data.shape[0],:data.shape[1],:data.shape[2]]> obj.getFloat32Memory()
+    cdef float [:,:,::1] cView = <float[:data.shape[0],:data.shape[1],:data.shape[2]]> obj.getFloat32Memory()
     cView[:] = data
 
 cdef CData3D * getObject(i) except NULL:
@@ -202,6 +205,8 @@ def dimensions(i):
 def shepp_logan(i, modified=True):
     cdef CData3D * pDataObject = getObject(i)
     cdef CFloat32VolumeData3D * pVolumeDataObject = <CFloat32VolumeData3D * >pDataObject
+    if not pDataObject.isFloat32Memory():
+        raise ValueError("Data object is not float32/memory")
     generateSheppLogan3D(pVolumeDataObject, modified);
 
 def delete(ids):
