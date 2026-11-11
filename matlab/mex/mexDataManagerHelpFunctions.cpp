@@ -225,12 +225,10 @@ allocateDataObject(const std::string & sDataType,
 		}
 		else
 		{
-			std::unique_ptr<astra::CDataStorage> pStorage(new astra::CDataMemory<float>(dataSize));
-			pDataObject3D = new astra::CFloat32VolumeData3D(*pGeometry, std::move(pStorage));
+			pDataObject3D = astra::createCFloat32VolumeData3DMemory(std::move(pGeometry));
 		}
 #else
-		std::unique_ptr<astra::CDataStorage> pStorage(new astra::CDataMemory<float>(dataSize));
-		pDataObject3D = new astra::CFloat32VolumeData3D(*pGeometry, std::move(pStorage));
+		pDataObject3D = astra::createCFloat32VolumeData3DMemory(std::move(pGeometry));
 #endif
 		delete pGeometry;
 	}
@@ -277,12 +275,10 @@ allocateDataObject(const std::string & sDataType,
 		}
 		else
 		{
-			std::unique_ptr<astra::CDataStorage> pStorage(new astra::CDataMemory<float>(dataSize));
-			pDataObject3D = new astra::CFloat32ProjectionData3D(*pGeometry, std::move(pStorage));
+			pDataObject3D = astra::createCFloat32ProjectionData3DMemory(std::move(pGeometry));
 		}
 #else
-		std::unique_ptr<astra::CDataStorage> pStorage(new astra::CDataMemory<float>(dataSize));
-		pDataObject3D = new astra::CFloat32ProjectionData3D(*pGeometry, std::move(pStorage));
+		pDataObject3D = astra::createCFloat32ProjectionData3DMemory(std::move(pGeometry));
 #endif
 	}
 	else
