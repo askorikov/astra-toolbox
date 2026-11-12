@@ -225,10 +225,10 @@ allocateDataObject(const std::string & sDataType,
 		}
 		else
 		{
-			pDataObject3D = astra::createCFloat32VolumeData3DMemory(std::move(pGeometry));
+			pDataObject3D = astra::createCFloat32VolumeData3DMemory(*pGeometry);
 		}
 #else
-		pDataObject3D = astra::createCFloat32VolumeData3DMemory(std::move(pGeometry));
+		pDataObject3D = astra::createCFloat32VolumeData3DMemory(*pGeometry);
 #endif
 		delete pGeometry;
 	}

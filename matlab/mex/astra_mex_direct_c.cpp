@@ -63,7 +63,7 @@ astra::CFloat32VolumeData3D *wrapVolumeData(const astra::CVolumeGeometry3D& geom
 	std::unique_ptr<astra::CDataStorage> m = std::make_unique<CDataMemory_simple>(data);
 	return new astra::CFloat32VolumeData3D(geom, std::move(m));
 }
-astra::CFloat32VolumeData3D *wrapProjectionData(const astra::CProjectionGeometry3D& geom, float *data)
+astra::CFloat32ProjectionData3D *wrapProjectionData(const astra::CProjectionGeometry3D& geom, float *data)
 {
 	std::unique_ptr<astra::CDataStorage> m = std::make_unique<CDataMemory_simple>(data);
 	return new astra::CFloat32ProjectionData3D(geom, std::move(m));
@@ -233,6 +233,10 @@ void astra_mex_direct_bp3d(int& nlhs, mxArray* plhs[], int& nrhs, const mxArray*
 	if (mxIsSingle(data)) {
 		pInput = wrapProjectionData(pProjGeom, (float *)mxGetData(data));
 	} else {
+		size_t dataSize = pProjGeom.getDetectorColCount();
+		dataSize *= pProjGeom.getProjectionCount();
+		dataSize *= pProjGeom.getDetectorRowCount();
+
 		pInput = astra::createCFloat32ProjectionData3DMemory(pProjGeom);
 		copyMexToCFloat32Array(data, pInput->getFloat32Memory(), dataSize);
 	}
@@ -258,7 +262,7 @@ void astra_mex_direct_bp3d(int& nlhs, mxArray* plhs[], int& nrhs, const mxArray*
 		const mwSize elem_size = mxGetElementSize(pOutputMx);
 		mxSetData(pOutputMx, mxMalloc(elem_size * num_elems));
 
-		pOutput = wrapVolumeData(pProjGeom, (float *)mxGetData(pOutputMx));
+		pOutput = wrapVolumeData(pVolGeom,(float *)mxGetData(pOutputMx));
 	} else {
 		pOutput = astra::createCFloat32VolumeData3DMemory(pVolGeom);
 	}
